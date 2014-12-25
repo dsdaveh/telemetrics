@@ -49,7 +49,8 @@ plotTrip <- function(trip, v.mark=5, t.mark=100, tmin=1, tmax=nrow(trip)) {
         current['dist'] <- current['dist'] + i.v/1000 #  dist.seg = speed * time (=1sec)
         current['v'] <- i.v * 3.6
         current['a'] <- i.a
-        current['heading'] <- calcBearing( trip[i, ])
+        bearing <- calcBearing( trip[i, ])
+        current['heading'] <- ifelse( is.nan(bearing), bearing.last, bearing) %% 360
     }
     #print(trip[i,])
     trip.info <- sprintf("distance traveled:%5.1f km\ndirection=%5.0f deg\ncurrent speed=%5.1f km/h\nacceleration=%5.1f m/s^2"
@@ -58,18 +59,26 @@ plotTrip <- function(trip, v.mark=5, t.mark=100, tmin=1, tmax=nrow(trip)) {
     par(par.orig)
 }
 
-calcBearing <- function( t ) {
+bearing.smooth <<- 0
+bearing.last <<- 0
+calcBearing <- function( t, smooth=TRUE ) {
+    #smooth causes a 2deg ccw rotation at 179 to go to 181 rather than -179
+    #, but results in angles > 360  ... may be imperfect if there are large swings in bearings
     vx <- t$x.d
     vy <- t$y.d
-    heading <- atan(vy / vx) * 180/pi
+    bearing <- atan(vy / vx) * 180/pi
     if ( vx  < 0 )  {
-        if ( vy < 0 ) { 
-            heading <- heading - 180  
-        } else {
-            heading <- heading + 180
+        if ( vy < 0 ) {   #3rd Quadrant
+            bearing <- bearing - 180  
+            if (bearing.last %% 360 <= 180) bearing.smooth <<- bearing.smooth + 360
+        } else {          #2nd Quadrant
+            bearing <- bearing + 180
+            if (bearing.last %% 360 > 180) bearing.smooth <<- bearing.smooth - 360
         }
     }
-    return(heading)
+    if (smooth) bearing <- bearing + bearing.smooth
+    if ( ! is.nan(bearing) ) bearing.last <<- bearing  
+    return(bearing)
 }
 
 plotTripSegment <- function(trip, tmin=1, tmax=tmin+100, f=.01, ...) {
@@ -93,7 +102,23 @@ getTrip <- function(driver, trip) {
     trip$x.d2 <- trip$x.d - trip.last$x.d
     trip$y.d2 <- trip$y.d - trip.last$y.d
     trip$a <- trip$v - trip.last$v     
-    for(i in 1:nrow(trip)) trip$bearing[i] <- calcBearing( trip[i,])
+    bearing <- numeric()
+    for(i in 1:nrow(trip)) {
+        bearing[i] <- ifelse( trip[i,]$v > 5, calcBearing( trip[i,]), NA )
+    }
+    trip <- cbind(trip, bearing)
+    #trip$cum.dist <- 
     
     return(trip)
+}
+
+overlayHeading <- function (t, mag=100) {
+    scale <- mag / t$v
+    hx <- c( 0, t$x.d * scale) + t$x
+    hy <- c( 0, t$y.d * scale) + t$y
+    lines(hx, hy)
+}
+
+overlayTripHeadings <- function (trip, mag=100, skip=10) {
+    for (i in seq(1, nrow(trip), by=skip)) plotHeading( trip[i,], mag=mag)
 }

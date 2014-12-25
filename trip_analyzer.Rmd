@@ -115,5 +115,18 @@ plotTripSegment(trip, 300, 400, t.mark=50, f=.06)
 ```
 From the map, it looks like a roundabout followed by a hairpin turn, from which the driver exited onto another road.
 
+## Bearings
+I'm calculating the bearings using the lagged distance vectors *x.d, x.d*.   I found the bearing data erratic at slow speeds, and it could be misleading, so I only record it where v > 5 m/s, so there are some gaps in the graphs.  Also, in order to prevent sudden flips (e.g. from 170deg to -170deg), I allow the to total angle to exceed 360.
+
+Looking at the bearings over time is a little hard to interpret, although you can see spikes where there are turns.  I found it best to produce a lag shifted plot to remove the trend component.  This could also give us a measure of *bearing drift* during straight stretches, but I think the signal noise needs to be removed before that would be reliable
+
+```{r}
+par(mfcol=c(2,1))
+plot(     trip$bearing,         type="l", main="Bearing")
+plot(diff(trip$bearing, lag=1), type="l", main="Bearing (lag shifted)")
+par(mfrow=c(1,1))
+```
+
+
 ## Conclusion
 I'm starting to feel confident this tool will help decipher the trips.  Most people seem to focussing on the routes themselves as the primary features, and its probably accurate to say that drivers will tend toward the same routes.  I've heard just using trip length as a predictor gets you pretty far.  That said, anyone who does that will totally miss when the driver takes a different route.  So the next step is to try to break down the routes into segment types, and then see we can reconstruct the route generically.  If we can do that, the differences in the driving behavior between similar segments should be strong predictors.
