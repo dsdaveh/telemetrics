@@ -113,7 +113,7 @@ The last trough looks like a roundabout, with an immediate obstacle (traffic)
 ```{r}
 plotTripSegment(trip, 300, 400, t.mark=50, f=.06)
 ```
-From the map, it looks like a bigger roundabout which the driver took onto another road, with an immediate left turn.
+From the map, it looks like a roundabout followed by a hairpin turn, from which the driver exited onto another road.
 
 ## Conclusion
 I'm starting to feel confident this tool will help decipher the trips.  Most people seem to focussing on the routes themselves as the primary features, and its probably accurate to say that drivers will tend toward the same routes.  I've heard just using trip length as a predictor gets you pretty far.  That said, anyone who does that will totally miss when the driver takes a different route.  So the next step is to try to break down the routes into segment types, and then see we can reconstruct the route generically.  If we can do that, the differences in the driving behavior between similar segments should be strong predictors.

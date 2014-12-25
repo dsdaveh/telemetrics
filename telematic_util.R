@@ -25,6 +25,7 @@ v.inc <- 10
 dist <- 0
 
 plotTrip <- function(trip, v.mark=5, t.mark=100, tmin=1, tmax=nrow(trip)) {
+    tmax <- min(tmax, nrow(trip))
     v.inc <<- v.mark
     par.orig <- par(mar=c(5,4,5,2))
     plot(trip[tmin:tmax, 1:2], type="n", asp=1)
@@ -48,20 +49,27 @@ plotTrip <- function(trip, v.mark=5, t.mark=100, tmin=1, tmax=nrow(trip)) {
         current['dist'] <- current['dist'] + i.v/1000 #  dist.seg = speed * time (=1sec)
         current['v'] <- i.v * 3.6
         current['a'] <- i.a
-        current['heading'] <- atan(trip[i,"y.d"] / trip[i,"x.d"]) * 180/pi
-        if ( trip[i, "x.d"] < 0 )  {
-            if ( trip[i, "y.d"] < 0 ) { 
-                current['heading'] <- current['heading'] - 180  
-            } else {
-                current['heading'] <- current['heading'] + 180
-            }
-        }
+        current['heading'] <- calcBearing( trip[i, ])
     }
     #print(trip[i,])
     trip.info <- sprintf("distance traveled:%5.1f km\ndirection=%5.0f deg\ncurrent speed=%5.1f km/h\nacceleration=%5.1f m/s^2"
                          ,  current['dist'], current['heading'], current['v'], current['a'] )
     mtext(trip.info, adj=0, cex=.8)
     par(par.orig)
+}
+
+calcBearing <- function( t ) {
+    vx <- t$x.d
+    vy <- t$y.d
+    heading <- atan(vy / vx) * 180/pi
+    if ( vx  < 0 )  {
+        if ( vy < 0 ) { 
+            heading <- heading - 180  
+        } else {
+            heading <- heading + 180
+        }
+    }
+    return(heading)
 }
 
 plotTripSegment <- function(trip, tmin=1, tmax=tmin+100, f=.01, ...) {
@@ -84,7 +92,8 @@ getTrip <- function(driver, trip) {
     trip <- trip[-1, ]
     trip$x.d2 <- trip$x.d - trip.last$x.d
     trip$y.d2 <- trip$y.d - trip.last$y.d
-    trip$a <- trip$v - trip.last$v           
+    trip$a <- trip$v - trip.last$v     
+    for(i in 1:nrow(trip)) trip$bearing[i] <- calcBearing( trip[i,])
     
     return(trip)
 }
