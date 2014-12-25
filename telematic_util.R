@@ -64,3 +64,27 @@ plotTrip <- function(trip, v.mark=5, t.mark=100, tmin=1, tmax=nrow(trip)) {
     par(par.orig)
 }
 
+plotTripSegment <- function(trip, tmin=1, tmax=tmin+100, f=.01, ...) {
+    par.orig <- par(mfrow=c(1,2))
+    plotTrip( trip, tmin=tmin, tmax=tmax, ...)
+    plot(lowess(tmin:tmax, trip$v[tmin:tmax], f=f), type="l",xlab="seconds", ylab="speed m/s")
+    par(par.orig)
+}
+
+getTrip <- function(driver, trip) {
+    #data.dir is the assumed directory, sequentially numbered .csv files are assumed
+    trip.file <- paste0( data.dir, '/', driver, '/', trip, ".csv")
+    trip <- read.csv( trip.file )
+    trip.last <- trip[-nrow(trip), ]
+    trip <- trip[-1, ]
+    trip$x.d <- trip$x - trip.last$x
+    trip$y.d <- trip$y - trip.last$y
+    trip$v <- sqrt( trip$x.d^2 + trip$y.d^2 )  # distance travelled per second
+    trip.last <- trip[-nrow(trip), 3:5 ]
+    trip <- trip[-1, ]
+    trip$x.d2 <- trip$x.d - trip.last$x.d
+    trip$y.d2 <- trip$y.d - trip.last$y.d
+    trip$a <- trip$v - trip.last$v           
+    
+    return(trip)
+}

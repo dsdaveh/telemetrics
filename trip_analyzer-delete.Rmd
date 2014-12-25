@@ -25,10 +25,25 @@ driver.df <- data.frame(id=integer()
                         , speed.avg=numeric(), speed.max=numeric()
                         , break.max=numeric(), accel.max=numeric())
 for (i in 1:N.DRIVERS) {
-    driver.id <- drivers.dir[random.driver[i]]
-    j <- 99  #grab
-    trip <- getTrip( driver.id, j )
-    driver.df[i, "id"] = driver.id
+    driver.id = drivers.dir[random.driver[1]]
+    driver.dir <- paste(c(data.dir, drivers.dir[random.driver[i]]), collapse="/")
+    driver.files <- dir(driver.dir)
+    j <- length(driver.files)  #grab the last trip
+    trip.id <- j
+    #for (j in 1:length(driver.files)) {
+        trip <- read.csv( paste(c(driver.dir, driver.files[j] ), collapse="/"))
+        trip.last <- trip[-nrow(trip), ]
+        trip <- trip[-1, ]
+        trip$x.d <- trip$x - trip.last$x
+        trip$y.d <- trip$y - trip.last$y
+        trip$v <- sqrt( trip$x.d^2 + trip$y.d^2 )  # distance travelled per second
+        trip.last <- trip[-nrow(trip), 3:5 ]
+        trip <- trip[-1, ]
+        trip$x.d2 <- trip$x.d - trip.last$x.d
+        trip$y.d2 <- trip$y.d - trip.last$y.d
+        trip$a <- trip$v - trip.last$v       
+    #}
+    driver.df[i,"id"] = drivers.dir[random.driver[1]]
     driver.df[i, "speed.avg"] =  mean(trip$v)
     driver.df[i, "speed.max"] =  max(trip$v)
     driver.df[i, "break.max"] =  min(trip$a)
@@ -36,12 +51,7 @@ for (i in 1:N.DRIVERS) {
 }    
     
 ```
-Now we've got the `r j`th trip for driver `r drivers.dir[random.driver[i]]` in memory. Here's the data for the first few lines (we are supplied the first 2, x and y, the rest is derived):
-```{r}
-head(trip)
-```
-
-Plot the entire trip:  
+Now we've got the `r j`th trip for driver `r drivers.dir[random.driver[i]]` in memory.  Plot the entire trip:  
 
 ```{r entire_trip}
 plotTrip(trip, v.mark=50) 
@@ -58,20 +68,20 @@ Note that the speed is shown in <span style="color:green">green</span> when the 
 plotTrip(trip, tmax=410, v.mark=10)
 ```
   
-Putting this all together, you can do some quick detail analysis with some simple console commands.  For this trip, the interesting stuff is near the end of the trip, so you can step through things like this:  
+Putting this all together, you do some quick detail analysis with some simple console commands.  For this trip, the interesting stuff is on the back end and you can step through things like this:  
 ```{r}
 par(mfrow=c(1,2))
-i = 1050 #the time period we want to start with
-i=i+50;  plotTrip(trip, tmin=650, tmax=i)
-i=i+50;  plotTrip(trip, tmin=650, tmax=i)    # constant start point, grow segment 
+i = 800 #the time period we want to start with
+i=i+20;  plotTrip(trip, tmin=650, tmax=i)
+i=i+20;  plotTrip(trip, tmin=650, tmax=i)
 ```
   
 or  
 ```{r}
 par(mfrow=c(1,2))
-i = 1050 #the time period we want to start with
-i=i+50;  plotTrip(trip, tmin=i-450, tmax=i)
-i=i+50;  plotTrip(trip, tmin=i-450, tmax=i) # constant segment
+i = 800 #the time period we want to start with
+i=i+20;  plotTrip(trip, tmin=i-150, tmax=i)
+i=i+20;  plotTrip(trip, tmin=i-150, tmax=i)
 ```
   
 Soo.., putting it all together for this driver, I have to believe he stopped at the McDonalds drivethrough on his way home for work. I wonder if we can build a feature out of that ;-)  
@@ -94,26 +104,4 @@ plotTrip(trip, tmin=480, tmax=700)
 ```
 You can see it show up just before t=600, but there's nothing that would explain this other than an measurement or entry error, so we probably want to remove that data point and impute its value.  That looks like a general data cleaning operation we'll need to do.  (I remember reading something about this in the forums)
 
-Moving on...
 
-Looking at the velocity profile for the first part of the trip, it shows regular slow downs, but not stops.  I wrote the functon `plotTripSegment` to help with zooming in on this.
-```{r}
-plotTripSegment(trip, 1,500)
-```
-We'll narrow in on the first valley:
-```{r}
-plotTripSegment(trip, 30, 130, t.mark=50, f=.06)
-```
-Hmmm... looks like a roundabout, and it goes to the left, so we are probably in England!
-The regularity of of the troughs is interesting. The next one appears to be identical.  This suggests several possible features:  When does the driver start to slow down going into a roundabout?  When do they speed up?  How fast do they take it?  
-```{r}
-plotTripSegment(trip, 170, 270, t.mark=50, f=.06)
-```
-The last trough looks like a roundabout, with an immediate obstacle (traffic)
-```{r}
-plotTripSegment(trip, 300, 400, t.mark=50, f=.06)
-```
-From the map, it looks like a bigger roundabout which the driver took onto another road, with an immediate left turn.
-
-## Conclusion
-I'm starting to feel confident this tool will help decipher the trips.  Most people seem to focussing on the routes themselves as the primary features, and its probably accurate to say that drivers will tend toward the same routes.  I've heard just using trip length as a predictor gets you pretty far.  That said, anyone who does that will totally miss when the driver takes a different route.  So the next step is to try to break down the routes into segment types, and then see we can reconstruct the route generically.  If we can do that, the differences in the driving behavior between similar segments should be strong predictors.
