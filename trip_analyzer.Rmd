@@ -89,4 +89,17 @@ par(mfrow=c(1,2))
 plotTrip(trip, tmin=675, tmax=1090)
 plotTrip(trip, tmin=670)
 par(mfrow=c(1,1))
+```  
+The next practical use of this tool is to look at the spikes in the velocity (and acceleration plots)
+```{r velocity}
+par(mfcol=c(2,2))
+plot(trip$v, type="l", main="Velocity")
+plot(trip$a, type="l", main="Acceleration")
+plot(trip[580:600,]$v, type="l", main="Velocity (Zoomed)")
+plot(trip[580:600,]$a, type="l", main="Acceleration (Zoomed")
+par(mfrow=c(1,1))
+plotTrip(trip, tmin=480, tmax=700)
 ```
+You can see it show up just before t=600, but there's nothing that would explain this other than an measurement or entry error, so we probably want to remove that data point and impute its value.  That looks like a general data cleaning operation we'll need to do.  (I remember reading something about this in the forums)
+
+
