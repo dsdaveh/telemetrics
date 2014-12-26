@@ -82,10 +82,15 @@ calcBearing <- function( t, smooth=TRUE ) {
     return(bearing)
 }
 
-plotTripSegment <- function(trip, tmin=1, tmax=tmin+100, f=.01, ...) {
+plotTripSegment <- function(trip, tmin=1, tmax=tmin+100, f=.01, b.marks=NULL, ...) {
     par.orig <- par(mfrow=c(1,2))
-    plotTrip( trip, tmin=tmin, tmax=tmax, ...)
+
+    plotTrip(trip, tmin=tmin, tmax=tmax, header=TRUE, ...)
+    if (exists ("b.marks")) overlaySegmentBorders( trip, b.marks )
+    
     plot(lowess(tmin:tmax, trip$v[tmin:tmax], f=f), type="l",xlab="seconds", ylab="speed m/s")
+    if (exists ("b.marks")) abline(v=b.marks, col="red", lty=2)
+    
     par(par.orig)
 }
 
@@ -97,20 +102,19 @@ plotTripSegment6 <- function(trip, tmin=1, tmax=tmin+100, ma=5, b.marks=NULL, ..
     plot(tmin:tmax, cumsum(tt$v), type="l", main="Cumulative Distance", ylab="distance", xlab="")
     if (exists ("b.marks")) abline(v=b.marks, col="red", lty=2)
     
+    b.ma <- filter( tt$bearing, rep(1/ma,ma), sides=2)
+    plot(tmin:tmax, b.ma, type="l", main="Bearing (MA)", ylab="degrees (+X=0)", xlab="")
+    if (exists ("b.marks")) abline(v=b.marks, col="red", lty=2)
+    
     v.ma <- filter( tt$v, rep(1/ma,ma), sides=2)
     plot(tmin:tmax, v.ma, type="l", main="Speed (MA)", ylab="speed m/s", xlab="")
     abline(h=17, col="red", lty=2)
-    if (exists ("b.marks")) abline(v=b.marks, col="red", lty=2)
-    
-    b.ma <- filter( tt$bearing, rep(1/ma,ma), sides=2)
-    plot(tmin:tmax, b.ma, type="l", main="Bearing (MA)", ylab="degrees (+X=0)", xlab="")
     if (exists ("b.marks")) abline(v=b.marks, col="red", lty=2)
     
     b.ima <- filter( diff(tt$bearing, lag=1), rep(1/ma,ma), sides=2)
     plot((tmin+1):tmax, b.ima, type="l", main="Bearing (IMA)", ylab="degrees (+X=0)", xlab="")
     abline( h=c( -3, 3 ), col="red", lty=2)
     if (exists ("b.marks")) abline(v=b.marks, col="red", lty=2)
-    
     
     a.ma <- filter( tt$a, rep(1/ma,ma), sides=2)
     plot(tmin:tmax, a.ma, type="l", main="Accel (MA)", ylab="speed m/s^2", xlab="")
@@ -170,3 +174,43 @@ overlayHeading <- function (t, mag=100) {
 overlayTripHeadings <- function (trip, mag=100, skip=10) {
     for (i in seq(1, nrow(trip), by=skip)) plotHeading( trip[i,], mag=mag)
 }
+
+MIN_SEGMENT_LENGTH <- 50
+segment.parse.bearing <- function(trip, tmin=1, tmax=nrow(trip), zone=3) {
+    tmax <- min(tmax, nrow(trip))
+    ma <- 5  
+    b.ima <- filter( diff(trip$bearing, lag=1), rep(1/ma,ma), sides=2)
+    #     plot((tmin+1):tmax, b.ima, type="l", main="Bearing (IMA)", ylab="degrees (+X=0)", xlab="")
+    #     abline( h=c( -3, 3 ), col="red", lty=2)
+    
+    in.zone <- ifelse( is.na(b.ima[1]), FALSE, abs(b.ima[1]) < zone )
+    t.start <- ifelse( in.zone, 2, 0)
+    ss <- data.frame( t0=integer(), tlen=integer())  # straight segments
+    for (i in 2:length(b.ima)) {
+        t <- tmin + i
+        in.zone <- ifelse( is.na(b.ima[i]), FALSE, abs(b.ima[i]) < zone )
+        if ( in.zone ) { #in the zone
+            if( t.start > 0) {
+                t.end <- t             #still in the zone
+            } else {
+                t.start <- t.end <- t  #new zone
+            }
+        } else {                 #out of the zone
+            if (t.start > 0) {
+                seg.len <- t.end - t.start
+                if (seg.len >= MIN_SEGMENT_LENGTH) {
+                    ss <- rbind(ss, data.frame( t0=t.start, tlen=seg.len))
+                }
+                t.start <- 0
+            }
+        }
+    }
+    if (t.start > 0) {
+        seg.len <- t.end - t.start
+        if (seg.len >= MIN_SEGMENT_LENGTH) {
+            ss <- rbind(ss, data.frame( t0=t.start, tlen=seg.len))
+        }
+    }
+        
+    return(ss)
+    }

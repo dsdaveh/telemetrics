@@ -1,0 +1,74 @@
+---
+title: "Segmentation of Trip Data - Part2"
+author: "Dave Hurst"
+date: "Thursday, December 25, 2014"
+output: pdf_document
+---
+
+## Notes for automating detection of straight trip segments
+
+```{r get_driver, echo=FALSE}
+source("telematic_util.R")
+
+data.dir <- "c:/NO_BACKUP/kaggle/telematics/drivers"
+
+drivers.dir <- dir(data.dir)
+set.seed(2349)
+
+random.driver <- order(runif(1:length(drivers.dir), ))
+
+N.DRIVERS <- 1
+driver.df <- data.frame(id=integer()
+                        , speed.avg=numeric(), speed.max=numeric()
+                        , break.max=numeric(), accel.max=numeric())
+for (i in 1:N.DRIVERS) {
+    driver.id <- drivers.dir[random.driver[i]]
+    j <- 99  #grab
+    trip <- getTrip( driver.id, j )
+    driver.df[i, "id"] = driver.id
+    driver.df[i, "speed.avg"] =  mean(trip$v)
+    driver.df[i, "speed.max"] =  max(trip$v)
+    driver.df[i, "break.max"] =  min(trip$a)
+    driver.df[i, "accel.max"] =  max(trip$a)
+}    
+    
+```
+Now we've got the `r j`th trip for driver `r drivers.dir[random.driver[i]]` in memory. 
+
+```{r route_plots}
+plotTrip(trip, v.mark=50)
+plotTripSegment6(trip, 1, 2000)
+```  
+```{r traverse_bearing}
+ss <- segment.parse.bearing(trip)
+
+```
+`r nrow(ss)` segments were detected.
+
+Note: in Part1 I suggested the trip should start where the bearing switched direction and then headed out of the zone.  It was easier just to mark the last point that was in the zone, and then shrink the zone a little.  That may be better anyway.   I still need to interate on a good shrink factor.  10 seconds seems like a good first guess.
+```{r plot_bseg}
+for(i in 1:nrow(ss)) {
+    t1 <- ss$t0[i]
+    t2 <- ss$t0[i] + ss$tlen[i]
+    shrink <- 10
+    plotTripSegment(trip, t1, t2, b.marks=c( t1+shrink, t2-shrink  ) )
+}
+```  
+
+Repeat for another trip:  (Note this almost looks like a return trip of the first)
+```{r trip2}
+trip <- getTrip( driver.id, 199 )
+plotTrip(trip, v.mark=50)
+ss <- segment.parse.bearing(trip)
+cat (nrow(ss), "segments were detected.\n")
+
+for(i in 1:nrow(ss)) {
+    t1 <- ss$t0[i]
+    t2 <- ss$t0[i] + ss$tlen[i]
+    shrink <- 10
+    plotTripSegment(trip, t1, t2, b.marks=c( t1+shrink, t2-shrink  ) )
+}
+```  
+
+## To Do
+Trip 200 returned NaN ... need to handle that
