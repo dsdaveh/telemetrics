@@ -2,7 +2,7 @@
 title: "Filtering Noise in the Data"
 author: "Dave Hurst"
 date: "Thursday, December 25, 2014"
-output: html_document
+output: pdf_document
 ---
 
 Preliminary notes for dealing with noise in the data.
@@ -53,8 +53,9 @@ box.y <- c(d1, d1, d2, d2, d1)/1000
 lines(box.x, box.y, col="red")
 ```   
 
-Zoom in (on the red box above) to see the noise.  This plot is basically saying that car shifted 1 meter in its lane, which is plausible, but could be GPS error.
+Zoom in (on the red box above) to see the noise.  This plot is basically saying that car shifted 1 meter in its lane, which is plausible, but could be GPS error.  The main take away is that high speed features are going to be more reliable than low speed since the GPS inaccuracy will be a smaller portion of the variance.
 ```{r zoom_dist}
 plot(t1:t2, cumsum(trip$v)[t1:t2]/1000, ylab="km", main= "Cumulative Distance", xlab="seconds",type="l")
 ```
+
 

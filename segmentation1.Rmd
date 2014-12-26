@@ -2,7 +2,7 @@
 title: "Segmentation of Trip Data"
 author: "Dave Hurst"
 date: "Thursday, December 25, 2014"
-output: html_document
+output: pdf_document
 ---
 
 ##Preliminary notes for dealing trip segmentation
@@ -74,9 +74,11 @@ plotTripSegment6(trip, 500, 700, t.mark=20)
 
 ### Straight Short High Speed Segment - SSH
 
-Just for kicks.  Here's an example of an SSH, but I'm not ready to think about this yet.
+Just for kicks.  Here's an example of an SSH, but I'm not ready to think about this yet. 
+I'm replotting the route separately, since it's hard to see in the PDF.  It looks okay as a panel in R-studio though.
 ```{r ssh}
 trip <- getTrip( driver.id, 200 )
 plotTripSegment6(trip, 160, 300, t.mark=20)
+plotTrip(trip, tmin=160, t.mark=20)
 ```
 
