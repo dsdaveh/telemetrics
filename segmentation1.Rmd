@@ -2,7 +2,7 @@
 title: "Segmentation of Trip Data"
 author: "Dave Hurst"
 date: "Thursday, December 25, 2014"
-output: pdf_document
+output: html_document
 ---
 
 ##Preliminary notes for dealing trip segmentation
@@ -61,4 +61,22 @@ Given those definitions, let's look at the next segment.
 ```{r seg2}
 plotTripSegment6(trip, 215, 350, t.mark=20, b.marks=c(239,333))
 ```  
-I think the criteria laid out above works well for this one as well.  I manually selected the segment boundary (vertical dashed lines) using in the Bearing' plot by looking for the first change in direction that leads to a series within the -3<B'<3 boundary, until the first point that trends out of it.  Based on the curvature in the Cum. Distance and the Accel plot, that's a little too agressive.  On this plot, putting in a 5 second lag/lead (e.g. t=(244,328)) hits the window pretty well, so I'll build that into the algorithm.
+
+I think the criteria laid out above works well for this one as well.  I manually selected the segment boundary (vertical dashed lines) using in the Bearing' plot by looking for the first change in direction that leads to a series within the -3 < B' < 3 boundary, until the first point that trends out of it.  Based on the curvature in the Cum. Distance and the Accel plot, that's a little too agressive.  On this plot, putting in a 5 second lag/lead (e.g. t=(244,328)) hits the window pretty well, so I'll build that into the algorithm.
+
+### Filtering with Moving Average
+
+I've been worried about how to handle the filtering, but have largely ignored it for now. I expect it will bite us at some point.  Since we have a known issue with this trip (between 580< t _issue_ <600), I thought I'd try out the new plot6 function.  In general it helps, but doesn't resolve the issue completely.  In this case, this segment doesn't qualify as an LSH (or any kind of straight segment).
+```{r spike}
+plotTripSegment6(trip, 500, 700, t.mark=20)
+
+```  
+
+### Straight Short High Speed Segment - SSH
+
+Just for kicks.  Here's an example of an SSH, but I'm not ready to think about this yet.
+```{r ssh}
+trip <- getTrip( driver.id, 200 )
+plotTripSegment6(trip, 160, 300, t.mark=20)
+```
+
