@@ -37,8 +37,24 @@ Now we've got the `r j`th trip for driver `r drivers.dir[random.driver[i]]` in m
 
 Here's an obvious depiction of the problem.  The plot below shows the last 90 seconds of the journey.  It's clear that the car is motionless, and yet we get wiggle in the coordinates that show up as 21 m/s velocity.
 
-```{r, echo=FALSE}
+```{r show_wiggle}
 plotTrip(trip, tmin=nrow(trip)-90, v.mark=1)
 ```
 
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+Plot of cumulative distance (note: trip$v can be used as segment distance, since t=1), and pick an arbitrary region to zoom in on (denoted with a red box)
+
+```{r cum_dist}
+plot(cumsum(trip$v)/1000, ylab="km", main= "Cumulative Distance", xlab="seconds", type="l")
+t1 <- 790; t2 <- 810
+d1 <- cumsum(trip$v)[t1] - 500 
+d2 <- cumsum(trip$v)[t2] + 500
+box.x <- c(t1, t2, t2, t1, t1)
+box.y <- c(d1, d1, d2, d2, d1)/1000
+lines(box.x, box.y, col="red")
+```   
+
+Zoom in (on the red box above) to see the noise.  This plot is basically saying that car shifted 1 meter in its lane, which is plausible, but could be GPS error.
+```{r zoom_dist}
+plot(t1:t2, cumsum(trip$v)[t1:t2]/1000, ylab="km", main= "Cumulative Distance", xlab="seconds",type="l")
+```
+

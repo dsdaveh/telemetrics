@@ -24,12 +24,13 @@ v.up <- 100; v.dn <- 0
 v.inc <- 10
 dist <- 0
 
-plotTrip <- function(trip, v.mark=5, t.mark=100, tmin=1, tmax=nrow(trip)) {
+plotTrip <- function(trip, v.mark=5, t.mark=100, tmin=1, tmax=nrow(trip), header=TRUE) {
     tmax <- min(tmax, nrow(trip))
     v.inc <<- v.mark
-    par.orig <- par(mar=c(5,4,5,2))
+    mar.top <- ifelse (header, 5, 2)
+    par.orig <- par(mar=c(5,4,mar.top,2))
     plot(trip[tmin:tmax, 1:2], type="n", asp=1)
-    mtext("Plot of Route", line=4)
+    if(header) mtext("Plot of Route", line=4)
     
     a.thresh = 1
     
@@ -55,7 +56,7 @@ plotTrip <- function(trip, v.mark=5, t.mark=100, tmin=1, tmax=nrow(trip)) {
     #print(trip[i,])
     trip.info <- sprintf("distance traveled:%5.1f km\ndirection=%5.0f deg\ncurrent speed=%5.1f km/h\nacceleration=%5.1f m/s^2"
                          ,  current['dist'], current['heading'], current['v'], current['a'] )
-    mtext(trip.info, adj=0, cex=.8)
+    if(header) mtext(trip.info, adj=0, cex=.8)
     par(par.orig)
 }
 
@@ -88,6 +89,54 @@ plotTripSegment <- function(trip, tmin=1, tmax=tmin+100, f=.01, ...) {
     par(par.orig)
 }
 
+plotTripSegment6 <- function(trip, tmin=1, tmax=tmin+100, ma=5, b.marks=NULL, ...) {
+    tmax <- min(tmax, nrow(trip))
+    tt <- trip[tmin:tmax,]
+    par.orig <- par(mfrow=c(3,2), mar=c(4,4,2,2))
+    
+    plot(tmin:tmax, cumsum(tt$v), type="l", main="Cumulative Distance", ylab="distance", xlab="")
+    if (exists ("b.marks")) abline(v=b.marks, col="red", lty=2)
+    
+    v.ma <- filter( tt$v, rep(1/ma,ma), sides=2)
+    plot(tmin:tmax, v.ma, type="l", main="Speed (MA)", ylab="speed m/s", xlab="")
+    abline(h=17, col="red", lty=2)
+    if (exists ("b.marks")) abline(v=b.marks, col="red", lty=2)
+    
+    b.ma <- filter( tt$bearing, rep(1/ma,ma), sides=2)
+    plot(tmin:tmax, b.ma, type="l", main="Bearing (MA)", ylab="degrees (+X=0)", xlab="")
+    if (exists ("b.marks")) abline(v=b.marks, col="red", lty=2)
+    
+    b.ima <- filter( diff(tt$bearing, lag=1), rep(1/ma,ma), sides=2)
+    plot((tmin+1):tmax, b.ima, type="l", main="Bearing (IMA)", ylab="degrees (+X=0)", xlab="")
+    abline( h=c( -3, 3 ), col="red", lty=2)
+    if (exists ("b.marks")) abline(v=b.marks, col="red", lty=2)
+    
+    
+    a.ma <- filter( tt$a, rep(1/ma,ma), sides=2)
+    plot(tmin:tmax, a.ma, type="l", main="Accel (MA)", ylab="speed m/s^2", xlab="")
+    if (exists ("b.marks")) abline(v=b.marks, col="red", lty=2)
+    
+    plotTrip(trip, tmin=tmin, tmax=tmax, header=FALSE, ...)
+    if (exists ("b.marks")) overlaySegmentBorders( trip, b.marks )
+    
+    par(par.orig)
+    
+}
+
+overlaySegmentBorders <- function (trip, t.vec, size=500, ...) {
+    rotate.90 <- matrix( c(0, 1, -1, 0), ncol=2)
+    ends <- matrix( rep(NA, 4), ncol=2)
+    for (t in t.vec) {
+        tt <- trip[t, ]
+        scale <- size / tt$v
+        v <- c(tt$x.d, tt$y.d) * scale / 2   # v is the heading vector
+        v.90 <- rotate.90 %*% v
+        ends[1, ] <- as.numeric(tt[1, 1:2] + v.90)
+        ends[2, ] <- as.numeric(tt[1, 1:2] - v.90)
+        lines(ends, col="red", lty=2)
+    }
+}
+
 getTrip <- function(driver, trip) {
     #data.dir is the assumed directory, sequentially numbered .csv files are assumed
     trip.file <- paste0( data.dir, '/', driver, '/', trip, ".csv")
@@ -107,7 +156,6 @@ getTrip <- function(driver, trip) {
         bearing[i] <- ifelse( trip[i,]$v > 5, calcBearing( trip[i,]), NA )
     }
     trip <- cbind(trip, bearing)
-    #trip$cum.dist <- 
     
     return(trip)
 }
