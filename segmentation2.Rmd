@@ -2,12 +2,9 @@
 title: "Segmentation of Trip Data - Part2"
 author: "Dave Hurst"
 date: "Thursday, December 25, 2014"
-output: pdf_document
+output: html_document
 ---
-
-## Notes for automating detection of straight trip segments
-
-```{r get_driver, echo=FALSE}
+```{r init, echo=FALSE}
 source("telematic_util.R")
 
 data.dir <- "c:/NO_BACKUP/kaggle/telematics/drivers"
@@ -16,59 +13,152 @@ drivers.dir <- dir(data.dir)
 set.seed(2349)
 
 random.driver <- order(runif(1:length(drivers.dir), ))
-
-N.DRIVERS <- 1
 driver.df <- data.frame(id=integer()
                         , speed.avg=numeric(), speed.max=numeric()
                         , break.max=numeric(), accel.max=numeric())
-for (i in 1:N.DRIVERS) {
-    driver.id <- drivers.dir[random.driver[i]]
-    j <- 99  #grab
-    trip <- getTrip( driver.id, j )
-    driver.df[i, "id"] = driver.id
-    driver.df[i, "speed.avg"] =  mean(trip$v)
-    driver.df[i, "speed.max"] =  max(trip$v)
-    driver.df[i, "break.max"] =  min(trip$a)
-    driver.df[i, "accel.max"] =  max(trip$a)
-}    
-    
-```
-Now we've got the `r j`th trip for driver `r drivers.dir[random.driver[i]]` in memory. 
 
-```{r route_plots}
-plotTrip(trip, v.mark=50)
-plotTripSegment6(trip, 1, 2000)
+```
+## Notes for automating detection of straight trip segments
+
+### A note on the speed plot:
+
+I started my notes using a lowess smoothed plot (original PlotSegment pair plots), and have migrated to plotting the moving average (t=5).  Before moving forward I wanted to pick one or the other and based on the plot below, I think MA is better than Lowess, as it will help smooth out the variation better.  In particular, I'm looking at the long deceleration between t~212 and t~219. In PlotSegment, I had picked a Lowess smoothing factor of .01 based on the plot segments I was looking at when I wrote it, but in this case the results are the same for f=.01 and f=.1, and both look identical to the raw data, which has a couple of stair steps that are probably just noise.    The smoothing parameter for lowess is less intuitive than for MA (seconds), and is sensitive to the length of the segment, while MA is not.
+
+Here's the comparison plot:
+```{r compare_vplots}
+par.orig <- par(mfrow=c(2,2))
+trip <- getTrip( 2591, 199 )
+t1 <- 193
+t2 <- 229
+
+plot(trip$v[t1:t2], xlab="seconds", ylab="speed m/s", main="Raw Data", type="l")
+plotTripSegment.speed(trip, t1, t2)
+plot(lowess(t1:t2, trip$v[t1:t2], f=.1), type="l",xlab="seconds", ylab="speed m/s", main="Lowess f=.1")
+plot(lowess(t1:t2, trip$v[t1:t2], f=.2), type="l",xlab="seconds", ylab="speed m/s", main="Lowess f=.2")
 ```  
+```{r get_driver, echo=FALSE}
+driver.id <- 2591
+j <- 99  
+trip <- getTrip( driver.id, j )    
+```
+
+### Automated segment detection (based on bearing lag < +/- 3deg )
+Note: in Part1 I suggested the trip should start where the bearing switched direction and then headed out of the zone.  While writing the segment detection code, it was easier just to mark the last point that was in the zone, and then shrink the zone a little.  That may be better anyway.   I still need to interate on a good shrink factor.  10 seconds seems like a good first guess.
+
+Also, I've shorted the minimum segment length to 30, since trip 200 otherwise had no straight segments.  We can still filter on the length of the segment if necessary.  Another variable we might want to play with is the min-speed threshold I've set at 5 m/s, but the lower we go the more the GPS accuracy will be a problem.  I think what we'll need to do is have models that take into account the type of trip -- i.e short/versus long, etc.
+
+Generally, I'm really happy with these results.  Here are some visual inspections of the segments that were auto detected for various routes
+
+
+### Observations from Driver `r driver.id`, Trip `r j`
+
 ```{r traverse_bearing}
 ss <- segment.parse.bearing(trip)
+print(nrow(ss))
+plotTripSegment6(trip, 1, 2000, b.marks=sort( c(ss$t0, ss$t0+ss$tlen)) )
+plotTrip(trip, v.mark=50, b.marks=sort( c(ss$t0, ss$t0+ss$tlen)))
 
-```
-`r nrow(ss)` segments were detected.
-
-Note: in Part1 I suggested the trip should start where the bearing switched direction and then headed out of the zone.  It was easier just to mark the last point that was in the zone, and then shrink the zone a little.  That may be better anyway.   I still need to interate on a good shrink factor.  10 seconds seems like a good first guess.
-```{r plot_bseg}
 for(i in 1:nrow(ss)) {
     t1 <- ss$t0[i]
     t2 <- ss$t0[i] + ss$tlen[i]
+    print (sprintf("segment %d: t1=%d  t2=%d  elapsed time=%d seconds\n", i, t1, t2, ss$tlen[i]))
     shrink <- 10
-    plotTripSegment(trip, t1, t2, b.marks=c( t1+shrink, t2-shrink  ) )
+    plotTripSegment(trip, t1-20, t2+20, b.marks=c( t1+shrink, t2-shrink  ) )
 }
 ```  
 
-Repeat for another trip:  (Note this almost looks like a return trip of the first)
+* Segments 1 & 2 (S1:2)  look similar with the segments ending during the deceleration
+* S3 ends before the deceleration ... I can't see any variable that accounts for the difference
+* S4 looks like S1:2, but it has a slight acceleration midway through the braking
+* S5 is only 31 seconds, and has a very different profile than the others.  I think it will be important to treat short segments as a different animal
+* S1:4  >= 70 secs
+ 
+
+Repeat for two more trips:  
+
 ```{r trip2}
-trip <- getTrip( driver.id, 199 )
-plotTrip(trip, v.mark=50)
-ss <- segment.parse.bearing(trip)
-cat (nrow(ss), "segments were detected.\n")
+trip.id = 199
 
-for(i in 1:nrow(ss)) {
-    t1 <- ss$t0[i]
-    t2 <- ss$t0[i] + ss$tlen[i]
-    shrink <- 10
-    plotTripSegment(trip, t1, t2, b.marks=c( t1+shrink, t2-shrink  ) )
+tripDetails <- function (driver.id, trip.id) {
+    trip <- getTrip( driver.id, trip.id )
+    ss <- segment.parse.bearing(trip)
+    cat (nrow(ss), "segments were detected for trip", trip.id, ".\n")
+    plotTripSegment6(trip, 1, 20000, b.marks=c(ss$t0, ss$t0+ss$tlen))
+    plotTrip(trip, v.mark=50, b.marks=c(ss$t0, ss$t0+ss$tlen))
+    
+    for(i in 1:nrow(ss)) {
+        t1 <- ss$t0[i]
+        t2 <- ss$t0[i] + ss$tlen[i]
+        print (sprintf("segment %d: t1=%d  t2=%d  elapsed time=%d seconds\n", i, t1, t2, ss$tlen[i]))
+        shrink <- 10
+        plotTripSegment(trip, t1-20, t2+20, b.marks=c( t1+shrink, t2-shrink  ) )
+    }
+    return(ss)
 }
+ss <- tripDetails( 2591, trip.id)
+
 ```  
 
-## To Do
-Trip 200 returned NaN ... need to handle that
+### Trip `r trip.id`  
+
+* 11 segments found, but subjectively (from the speed plot) it looks to be between 7-9
+* only 4 segments are > 70 sec (the last 4)
+* S2:3, S4:5 and S6:7 look like they should be combined 
+  + ignore S2:3 for now since they fall below the 17 m/s threshold
+  + S4:5 looks like a legit division, since there is bend in the road (plot below).  Looks like the driver kept his speed, but I think we want to capture this as a curve between 2 segments, rather than one long segment (so the algorithm got it right)
+  + S6:7 is still suspect
+  
+Here's S4:5 plotted as if it had been combined
+```{r trip199_s4_5}
+t1 <- ss$t0[4]
+t2 <- ss$t0[5] + ss$tlen[5]
+shrink <- 10
+trip <- getTrip( driver.id, trip.id )    
+plotTripSegment6(trip, t1-20, t2+20, b.marks=c( t1+shrink, t2-shrink  ) )
+```
+Looking at this, I'm torn between whether this should be one or two segments (contrary to what I wrote above).  It looks like this just _barely_ nicked out of the 3 degree zone, so that arbitrary choice will have a big effect on our results.  For now, let's just note it and move on.  It might not matter at all since I think the main use of this will be to find accel/deceleration segments, and we've still done that with the two segments (except we'll drop the end of S4 and the beginning of S5). 
+
+It looks like the same issue for S6:7
+```{r trip199_s6_7}
+t1 <- ss$t0[6]
+t2 <- ss$t0[7] + ss$tlen[7]
+shrink <- 10
+plotTripSegment6(trip, t1-20, t2+20, b.marks=c( t1+shrink, t2-shrink  ) )
+```
+
+```{r trip3}
+trip.id <- 200
+trip <- getTrip( driver.id, trip.id )    
+```  
+### Trip `r trip.id`  
+
+```{r trip3Plots}
+ss <- tripDetails( 2591, trip.id)
+```
+
+* Only one (short) segment found
+* This the reason I changed the MIN_SEGMENT_LENGTH to `r MIN_SEGMENT_LENGTH`  
+
+### Summary of all trip segments for this driver
+
+```{r allTrips}
+seg.summary <- data.frame( n.seg=integer(),
+                           seg.min=numeric(), seg.max=numeric(), seg.avg=numeric(), seg.sd=numeric())
+for(i.trip in 1:200) {
+    trip <- getTrip( driver.id, i.trip )    
+    ss <- segment.parse.bearing(trip)
+    seg.summary[i.trip, ]$n.seg   <- nrow(ss)
+    if ( nrow(ss) > 0) {
+       seg.summary[i.trip, ]$seg.min <- min(ss$tlen)
+       seg.summary[i.trip, ]$seg.max <- max(ss$tlen)
+       seg.summary[i.trip, ]$seg.avg <- mean(ss$tlen)
+       seg.summary[i.trip, ]$seg.sd  <- sd(ss$tlen)
+    }
+}
+print(summary(seg.summary))
+    
+seg0 <- which(seg.summary$n.seg == 0)
+seg0
+```
+
+The bad news is that we've got `r length(seg0)` trips with no segments, so we'll need to look for something other than straight segments, unless there is a tweak that will cause segments to be found.  I'll examine that in the next part.

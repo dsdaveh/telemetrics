@@ -2,7 +2,7 @@
 title: "Selected Driver Observations"
 author: "Dave Hurst"
 date: "Sunday, December 21, 2014"
-output: pdf_document
+output: html_document
 ---
 
 Playing around with a few driver trip profiles as part of the EDA.  *Caveat:* I haven't read any of the forums at this point.

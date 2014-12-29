@@ -24,7 +24,8 @@ v.up <- 100; v.dn <- 0
 v.inc <- 10
 dist <- 0
 
-plotTrip <- function(trip, v.mark=5, t.mark=100, tmin=1, tmax=nrow(trip), header=TRUE) {
+plotTrip <- function(trip, v.mark=5, t.mark=100, tmin=1, tmax=nrow(trip), b.marks=NULL, header=TRUE) {
+    tmin <- max(tmin, 1)
     tmax <- min(tmax, nrow(trip))
     v.inc <<- v.mark
     mar.top <- ifelse (header, 5, 2)
@@ -57,6 +58,9 @@ plotTrip <- function(trip, v.mark=5, t.mark=100, tmin=1, tmax=nrow(trip), header
     trip.info <- sprintf("distance traveled:%5.1f km\ndirection=%5.0f deg\ncurrent speed=%5.1f km/h\nacceleration=%5.1f m/s^2"
                          ,  current['dist'], current['heading'], current['v'], current['a'] )
     if(header) mtext(trip.info, adj=0, cex=.8)
+    
+    if (length(b.marks > 0)) overlaySegmentBorders( trip, b.marks )
+    
     par(par.orig)
 }
 
@@ -82,19 +86,34 @@ calcBearing <- function( t, smooth=TRUE ) {
     return(bearing)
 }
 
+plotTripSegment.speed <- function (trip, tmin=1, tmax=tmin+100, f=.01, b.marks=NULL, ma=5) {
+    tmin <- max(tmin, 1)
+    tmax <- min(tmax, nrow(trip))
+    v.ma <- filter( trip[tmin:tmax, ]$v, rep(1/ma,ma), sides=2)
+    plot(tmin:tmax, v.ma, type="l", main="Speed (MA)", ylab="speed m/s", xlab="")
+    abline(h=17, col="red", lty=2)
+    if (exists ("b.marks")) {
+        b.sort <- sort(b.marks)
+        ltype <- 2 + 1:length(b.sort) %% 2   # alternate linestyles between 2 & 3
+        abline(v=b.sort, col="red", lty=ltype)
+    }
+}
+
 plotTripSegment <- function(trip, tmin=1, tmax=tmin+100, f=.01, b.marks=NULL, ...) {
+    tmin <- max(tmin, 1)
+    tmax <- min(tmax, nrow(trip))
     par.orig <- par(mfrow=c(1,2))
 
     plotTrip(trip, tmin=tmin, tmax=tmax, header=TRUE, ...)
     if (exists ("b.marks")) overlaySegmentBorders( trip, b.marks )
     
-    plot(lowess(tmin:tmax, trip$v[tmin:tmax], f=f), type="l",xlab="seconds", ylab="speed m/s")
-    if (exists ("b.marks")) abline(v=b.marks, col="red", lty=2)
+    plotTripSegment.speed( trip, tmin=tmin, tmax=tmax, b.marks=b.marks )
     
     par(par.orig)
 }
 
 plotTripSegment6 <- function(trip, tmin=1, tmax=tmin+100, ma=5, b.marks=NULL, ...) {
+    tmin <- max(tmin, 1)
     tmax <- min(tmax, nrow(trip))
     tt <- trip[tmin:tmax,]
     par.orig <- par(mfrow=c(3,2), mar=c(4,4,2,2))
@@ -106,10 +125,7 @@ plotTripSegment6 <- function(trip, tmin=1, tmax=tmin+100, ma=5, b.marks=NULL, ..
     plot(tmin:tmax, b.ma, type="l", main="Bearing (MA)", ylab="degrees (+X=0)", xlab="")
     if (exists ("b.marks")) abline(v=b.marks, col="red", lty=2)
     
-    v.ma <- filter( tt$v, rep(1/ma,ma), sides=2)
-    plot(tmin:tmax, v.ma, type="l", main="Speed (MA)", ylab="speed m/s", xlab="")
-    abline(h=17, col="red", lty=2)
-    if (exists ("b.marks")) abline(v=b.marks, col="red", lty=2)
+    plotTripSegment.speed( trip, tmin, tmax, ma=ma, b.marks=b.marks)
     
     b.ima <- filter( diff(tt$bearing, lag=1), rep(1/ma,ma), sides=2)
     plot((tmin+1):tmax, b.ima, type="l", main="Bearing (IMA)", ylab="degrees (+X=0)", xlab="")
@@ -127,17 +143,19 @@ plotTripSegment6 <- function(trip, tmin=1, tmax=tmin+100, ma=5, b.marks=NULL, ..
     
 }
 
-overlaySegmentBorders <- function (trip, t.vec, size=500, ...) {
+overlaySegmentBorders <- function (trip, t.vec, size=nrow(trip)/2, ...) {
     rotate.90 <- matrix( c(0, 1, -1, 0), ncol=2)
     ends <- matrix( rep(NA, 4), ncol=2)
-    for (t in t.vec) {
+    i <- 0
+    for (t in sort(t.vec)) {    i <- i+1
         tt <- trip[t, ]
         scale <- size / tt$v
         v <- c(tt$x.d, tt$y.d) * scale / 2   # v is the heading vector
         v.90 <- rotate.90 %*% v
         ends[1, ] <- as.numeric(tt[1, 1:2] + v.90)
         ends[2, ] <- as.numeric(tt[1, 1:2] - v.90)
-        lines(ends, col="red", lty=2)
+        ltype <- 2 + i %% 2 # alternate linestyles between 2 & 3
+        lines(ends, col="red", lty=ltype )
     }
 }
 
@@ -175,11 +193,11 @@ overlayTripHeadings <- function (trip, mag=100, skip=10) {
     for (i in seq(1, nrow(trip), by=skip)) plotHeading( trip[i,], mag=mag)
 }
 
-MIN_SEGMENT_LENGTH <- 50
+MIN_SEGMENT_LENGTH <- 30
 segment.parse.bearing <- function(trip, tmin=1, tmax=nrow(trip), zone=3) {
     tmax <- min(tmax, nrow(trip))
     ma <- 5  
-    b.ima <- filter( diff(trip$bearing, lag=1), rep(1/ma,ma), sides=2)
+    b.ima <- filter( diff(trip$bearing[tmin:tmax], lag=1), rep(1/ma,ma), sides=2)
     #     plot((tmin+1):tmax, b.ima, type="l", main="Bearing (IMA)", ylab="degrees (+X=0)", xlab="")
     #     abline( h=c( -3, 3 ), col="red", lty=2)
     
