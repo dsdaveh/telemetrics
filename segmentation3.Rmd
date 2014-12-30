@@ -32,8 +32,8 @@ driver.id <- 2591
 seg.summary <- data.frame( n.seg=integer(), trip.len=integer(), speed.avg=numeric(), speed.max=numeric(),
                            seg.min=numeric(), seg.max=numeric(), seg.avg=numeric(), seg.sd=numeric())
 for(i.trip in 1:200) {
-    cat(i.trip,".")
-    trip <- getTrip( driver.id, i.trip )    
+    #cat(i.trip,".")
+    trip <- getTrip( driver.id, i.trip, v.thresh=5 )    #v.thresh = default
     ss <- segment.parse.bearing(trip)
     seg.summary[i.trip, ]$trip.len <- nrow(trip)
     seg.summary[i.trip, ]$speed.avg <- mean(trip$v)
@@ -59,25 +59,34 @@ Here's an example of the plots for these:
 trip.id <- 16
 trip <- getTrip( driver.id, trip.id )
 plotTrip(trip)
-plotTripSegment(trip, 1, 20000, t.mark=20)
+plotTripSegment(trip)
+plotTripSegment6(trip)
 ```
 
 * Trip 6: Extremely short trip (194 secs),  doesn't meet 30 sec criteria
-* Trip 16: Mirror image of Trip200.  Doesn't meet spead threshhold
+* Trip 16: 'straight' segment is 29 secs (1 under the threshold)
 * Trip 40: Too short 181 secs
-* Trip 45... : yada yada yad
+* Trip 45... : yada yada yada
 
 
 This is starting to get redundant, so let's look at all the trips in sorted order (lowest trip time) in order to see what these contain that we could use.
 
 ```{r}
 asc <- order(seg.summary$trip.len)
-print(seg.summary[asc, ])
+print(seg.summary[asc, 1:7])
 ```
 
+### trip 157 (2.5 mins)
 ```{r}
 trip.id <- 157
-trip <- getTrip( driver.id, trip.id )
+trip <- getTrip( driver.id, trip.id, v.thresh=1 )  # added v.thresh to allow for lower speed heading capture
 plotTrip(trip, t.mark=10)
-plotTripSegment(trip, 1, 10000, t.mark=20)
+plotTripSegment6(trip, 1, 80, t.mark=10)
 ```
+
+Looking at this trip, and several like it, I've determined we need to just capture acceleration or braking segments, since almost all trips will have those.  To start, I just look for deceleration and acceleration sequence by looking for sequential decreasing or increasing speeds respectively, where the speed differential is > 5 m/s  (NOTE: I used these to improve the red/green acceleration coloring on the trip plots).
+
+Let's stop here, and start moving on to trip profiles in Part4
+
+
+

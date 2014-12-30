@@ -25,6 +25,7 @@ v.inc <- 10
 dist <- 0
 
 in.zone <- function(t, b) {
+    if (length(b) <= 0) return(FALSE)
     b <- sort(b)
     if (t < b[1]) return (FALSE)
     for (i in 2:length(b)) {
@@ -204,6 +205,79 @@ getTrip <- function(driver, trip, v.thresh=5) {
     return(trip)
 }
 
+getTripProfile <- function(trip ) {
+    
+    prof <- data.frame( trip.len=nrow(trip) ) 
+    prof$trip.dist <- sum(trip$v)    #requires t interval = 1
+    prof$speed.avg <- mean(trip$v)   # same as dist/len ?
+    prof$speed.max <- max(trip$v)
+    
+    straights <- segment.parse.bearing(trip)
+    prof$ss.n   <- nrow(straights)
+    if ( nrow(straights) > 0) {
+        prof$ss.len.min <- min(straights$tlen)
+        prof$ss.len.max <- max(straights$tlen)
+        prof$ss.len.avg <- mean(straights$tlen)
+        prof$ss.len.sd  <- sd(straights$tlen)
+        range <- ( straights$v.max - straights$v.min )
+        prof$ss.range.avg <- mean( range) 
+        prof$ss.range.sd <- sd( range)
+        prof$ss.vmid.avg <- mean( straights$v.mid) 
+        prof$ss.vmid.sd <- sd( straights$v.mid)
+    } else {
+        prof$ss.len.min <- prof$ss.len.max <- prof$ss.len.avg <- prof$ss.len.sd  <- NA
+        prof$ss.range.avg <- prof$ss.range.sd <- prof$ss.vmid.avg <- prof$ss.vmid.sd <- NA
+    }
+    acc <- segment.parse.accel(trip)
+    prof$acc.n <- nrow(acc)
+    if ( nrow(straights) > 0) {
+        len <- acc$tn - acc$t0
+        prof$acc.len.min <- min( len ) 
+        prof$acc.len.max <- max( len )
+        prof$acc.len.avg <- mean( len )
+        prof$acc.len.sd  <- sd( len )
+        range <- ( acc$vn - acc$v0 )
+        prof$acc.range.avg <- mean( range) 
+        prof$acc.range.sd <- sd( range)
+        prof$acc.v0.avg <- mean( acc$v0) 
+        prof$acc.v0.sd <-  sd( acc$v0)
+        prof$acc.vn.avg <- mean( acc$vn) 
+        prof$acc.vn.sd <-  sd( acc$vn)
+        prof$acc.amid.avg <- mean( acc$a.mid) 
+        prof$acc.amid.sd <-  sd( acc$a.mid)
+    } else {
+        prof$acc.len.min <- prof$acc.len.max <- prof$acc.len.avg <- prof$acc.len.sd  <- NA
+        prof$acc.range.avg <- prof$acc.range.sd <- prof$acc.v0.avg <- prof$acc.v0.sd <-  NA
+        prof$acc.vn.avg <- prof$acc.vn.sd <-  prof$acc.amid.avg <- prof$acc.amid.sd <-  NA
+    }
+    
+    dec <- segment.parse.decel(trip)
+    prof$dec.n <- nrow(dec)
+    if ( nrow(straights) > 0) {
+        len <- dec$tn - dec$t0
+        prof$dec.len.min <- min( len ) 
+        prof$dec.len.max <- max( len )
+        prof$dec.len.avg <- mean( len )
+        prof$dec.len.sd  <- sd( len )
+        range <- ( dec$vn - dec$v0 )
+        prof$dec.range.avg <- mean( range) 
+        prof$dec.range.sd <- sd( range)
+        prof$dec.v0.avg <- mean( dec$v0) 
+        prof$dec.v0.sd <-  sd( dec$v0)
+        prof$dec.vn.avg <- mean( dec$vn) 
+        prof$dec.vn.sd <-  sd( dec$vn)
+        prof$dec.amid.avg <- mean( dec$a.mid) 
+        prof$dec.amid.sd <-  sd( dec$a.mid)
+    } else {
+        prof$dec.len.min <- prof$dec.len.max <- prof$dec.len.avg <- prof$dec.len.sd  <- NA
+        prof$dec.range.avg <- prof$dec.range.sd <- prof$dec.v0.avg <- prof$dec.v0.sd <-  NA
+        prof$dec.vn.avg <- prof$dec.vn.sd <-  prof$dec.amid.avg <- prof$dec.amid.sd <-  NA
+    }
+    return(prof)
+}
+
+
+
 overlayHeading <- function (t, mag=100) {
     scale <- mag / t$v
     hx <- c( 0, t$x.d * scale) + t$x
@@ -224,9 +298,10 @@ segment.parse.bearing <- function(trip, tmin=1, tmax=nrow(trip), zone=3) {
     
     in.zone <- ifelse( is.na(b.ima[1]), FALSE, abs(b.ima[1]) < zone )
     t.start <- ifelse( in.zone, 2, 0)
-    ss <- data.frame( t0=integer(), tlen=integer())  # straight segments
+    ss <- data.frame( t0=integer(), tlen=integer(),
+                      v.min=numeric(), v.max=numeric(), v.mid=numeric() )  # straight segments
     for (i in 2:length(b.ima)) {
-        t <- tmin + i
+        t <- tmin + i -1
         in.zone <- ifelse( is.na(b.ima[i]), FALSE, abs(b.ima[i]) < zone )
         if ( in.zone ) { #in the zone
             if( t.start > 0) {
@@ -238,7 +313,11 @@ segment.parse.bearing <- function(trip, tmin=1, tmax=nrow(trip), zone=3) {
             if (t.start > 0) {
                 seg.len <- t.end - t.start
                 if (seg.len >= MIN_SEGMENT_LENGTH) {
-                    ss <- rbind(ss, data.frame( t0=t.start, tlen=seg.len))
+                    seg.row <- data.frame( t0=t.start, tlen=seg.len)
+                    seg.row$v.min <- min( trip[t.start:t.end, ]$v)
+                    seg.row$v.max <- max( trip[t.start:t.end, ]$v)
+                    seg.row$v.mid <- min( trip[round((t.start+t.end)/2), ]$v)
+                    ss <- rbind(ss, seg.row)
                 }
                 t.start <- 0
             }
