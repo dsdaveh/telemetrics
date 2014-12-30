@@ -65,7 +65,7 @@ plotTrip <- function(trip, v.mark=5, t.mark=100, tmin=1, tmax=nrow(trip), b.mark
 }
 
 bearing.smooth <<- 0
-bearing.last <<- 0
+bearing.last   <<- 0
 calcBearing <- function( t, smooth=TRUE ) {
     #smooth causes a 2deg ccw rotation at 179 to go to 181 rather than -179
     #, but results in angles > 360  ... may be imperfect if there are large swings in bearings
@@ -86,64 +86,64 @@ calcBearing <- function( t, smooth=TRUE ) {
     return(bearing)
 }
 
-plotTripSegment.speed <- function (trip, tmin=1, tmax=tmin+100, f=.01, b.marks=NULL, ma=5) {
+plotTripSegment.speed <- function (trip, tmin=1, tmax=tmin+100, f=.01, b.marks=NULL, b.col="red", ma=5) {
     tmin <- max(tmin, 1)
     tmax <- min(tmax, nrow(trip))
     v.ma <- filter( trip[tmin:tmax, ]$v, rep(1/ma,ma), sides=2)
     plot(tmin:tmax, v.ma, type="l", main="Speed (MA)", ylab="speed m/s", xlab="")
-    abline(h=17, col="red", lty=2)
-    if (exists ("b.marks")) {
+    abline(h=17, col=b.col, lty=2)
+    if (length(b.marks) > 0) {
         b.sort <- sort(b.marks)
         ltype <- 2 + 1:length(b.sort) %% 2   # alternate linestyles between 2 & 3
-        abline(v=b.sort, col="red", lty=ltype)
+        abline(v=b.sort, col=b.col, lty=ltype)
     }
 }
 
-plotTripSegment <- function(trip, tmin=1, tmax=tmin+100, f=.01, b.marks=NULL, ...) {
+plotTripSegment <- function(trip, tmin=1, tmax=tmin+100, f=.01, b.marks=NULL, b.col="red", ...) {
     tmin <- max(tmin, 1)
     tmax <- min(tmax, nrow(trip))
     par.orig <- par(mfrow=c(1,2))
 
     plotTrip(trip, tmin=tmin, tmax=tmax, header=TRUE, ...)
-    if (exists ("b.marks")) overlaySegmentBorders( trip, b.marks )
+    if (length(b.marks) > 0) overlaySegmentBorders( trip, b.marks, b.col=b.col )
     
-    plotTripSegment.speed( trip, tmin=tmin, tmax=tmax, b.marks=b.marks )
+    plotTripSegment.speed( trip, tmin=tmin, tmax=tmax, b.marks=b.marks, b.col=b.col )
     
     par(par.orig)
 }
 
-plotTripSegment6 <- function(trip, tmin=1, tmax=tmin+100, ma=5, b.marks=NULL, ...) {
+plotTripSegment6 <- function(trip, tmin=1, tmax=tmin+100, ma=5, b.marks=NULL, b.col="red", ...) {
     tmin <- max(tmin, 1)
     tmax <- min(tmax, nrow(trip))
     tt <- trip[tmin:tmax,]
     par.orig <- par(mfrow=c(3,2), mar=c(4,4,2,2))
     
     plot(tmin:tmax, cumsum(tt$v), type="l", main="Cumulative Distance", ylab="distance", xlab="")
-    if (exists ("b.marks")) abline(v=b.marks, col="red", lty=2)
+    if (length(b.marks)) abline(v=b.marks, col=b.col, lty=2)
     
     b.ma <- filter( tt$bearing, rep(1/ma,ma), sides=2)
     plot(tmin:tmax, b.ma, type="l", main="Bearing (MA)", ylab="degrees (+X=0)", xlab="")
-    if (exists ("b.marks")) abline(v=b.marks, col="red", lty=2)
+    if (length(b.marks)) abline(v=b.marks, col=b.col, lty=2)
     
     plotTripSegment.speed( trip, tmin, tmax, ma=ma, b.marks=b.marks)
     
     b.ima <- filter( diff(tt$bearing, lag=1), rep(1/ma,ma), sides=2)
     plot((tmin+1):tmax, b.ima, type="l", main="Bearing (IMA)", ylab="degrees (+X=0)", xlab="")
-    abline( h=c( -3, 3 ), col="red", lty=2)
-    if (exists ("b.marks")) abline(v=b.marks, col="red", lty=2)
+    abline( h=c( -3, 3 ), col=b.col, lty=2)
+    if (length(b.marks)) abline(v=b.marks, col=b.col, lty=2)
     
     a.ma <- filter( tt$a, rep(1/ma,ma), sides=2)
     plot(tmin:tmax, a.ma, type="l", main="Accel (MA)", ylab="speed m/s^2", xlab="")
-    if (exists ("b.marks")) abline(v=b.marks, col="red", lty=2)
+    if (length(b.marks)) abline(v=b.marks, col=b.col, lty=2)
     
     plotTrip(trip, tmin=tmin, tmax=tmax, header=FALSE, ...)
-    if (exists ("b.marks")) overlaySegmentBorders( trip, b.marks )
+    if (length(b.marks)) overlaySegmentBorders( trip, b.marks )
     
     par(par.orig)
     
 }
 
-overlaySegmentBorders <- function (trip, t.vec, size=nrow(trip)/2, ...) {
+overlaySegmentBorders <- function (trip, t.vec, size=nrow(trip)/2, b.col="red", ...) {
     rotate.90 <- matrix( c(0, 1, -1, 0), ncol=2)
     ends <- matrix( rep(NA, 4), ncol=2)
     i <- 0
@@ -155,11 +155,13 @@ overlaySegmentBorders <- function (trip, t.vec, size=nrow(trip)/2, ...) {
         ends[1, ] <- as.numeric(tt[1, 1:2] + v.90)
         ends[2, ] <- as.numeric(tt[1, 1:2] - v.90)
         ltype <- 2 + i %% 2 # alternate linestyles between 2 & 3
-        lines(ends, col="red", lty=ltype )
+        lines(ends, col=b.col, lty=ltype )
     }
 }
 
-getTrip <- function(driver, trip) {
+getTrip <- function(driver, trip, v.thresh=5) {
+    bearing.smooth <<- 0
+    bearing.last   <<- 0
     #data.dir is the assumed directory, sequentially numbered .csv files are assumed
     trip.file <- paste0( data.dir, '/', driver, '/', trip, ".csv")
     trip <- read.csv( trip.file )
@@ -174,8 +176,10 @@ getTrip <- function(driver, trip) {
     trip$y.d2 <- trip$y.d - trip.last$y.d
     trip$a <- trip$v - trip.last$v     
     bearing <- numeric()
+    bearing.smooth <<- 0
+    bearing.last   <<- 0
     for(i in 1:nrow(trip)) {
-        bearing[i] <- ifelse( trip[i,]$v > 5, calcBearing( trip[i,]), NA )
+        bearing[i] <- ifelse( trip[i,]$v > v.thresh, calcBearing( trip[i,]), NA )
     }
     trip <- cbind(trip, bearing)
     
@@ -195,11 +199,10 @@ overlayTripHeadings <- function (trip, mag=100, skip=10) {
 
 MIN_SEGMENT_LENGTH <- 30
 segment.parse.bearing <- function(trip, tmin=1, tmax=nrow(trip), zone=3) {
+    tmin <- max(1, tmin)
     tmax <- min(tmax, nrow(trip))
     ma <- 5  
     b.ima <- filter( diff(trip$bearing[tmin:tmax], lag=1), rep(1/ma,ma), sides=2)
-    #     plot((tmin+1):tmax, b.ima, type="l", main="Bearing (IMA)", ylab="degrees (+X=0)", xlab="")
-    #     abline( h=c( -3, 3 ), col="red", lty=2)
     
     in.zone <- ifelse( is.na(b.ima[1]), FALSE, abs(b.ima[1]) < zone )
     t.start <- ifelse( in.zone, 2, 0)
@@ -231,4 +234,60 @@ segment.parse.bearing <- function(trip, tmin=1, tmax=nrow(trip), zone=3) {
     }
         
     return(ss)
+}
+
+segment.parse.accel <- function(trip, tmin=1, tmax=nrow(trip), thresh=5) {
+    tmin <- max(1, tmin)
+    tmax <- min(tmax, nrow(trip))
+    ma <- 5  
+    
+    v.ma <- filter( trip[tmin:tmax, ]$v, rep(1/ma,ma), sides=2)
+    t.loss <- floor( ma / 2)
+    
+    acc <- data.frame( t0=integer(), tn=integer(), v0=numeric(), vn=numeric(), a.mid=numeric() )  # straight segments
+    t0 <- t.loss + 1
+    v0 <- vn <- v.ma[t0]
+    for (t in (t.loss+2):(length(v.ma)-t.loss)) {
+        vt <- v.ma[t]
+        if ( vt > vn ) {    #acceleration
+            vn <- vt 
+        } else {            #deceleration
+            if ( abs(vn - v0) >= abs(thresh) & t - t0 > 5 ) {               #exceeded threshold 
+                t.mid  <- round((t-1 + t0) / 2)
+                acc.seg <- data.frame( t0=t0, tn=t-1, v0=v0, vn=vn, a.mid=(v.ma[t.mid+1] - v.ma[t.mid]))
+                acc <- rbind( acc, acc.seg)
+            }
+            t0 <- t
+            v0 <- vn <- vt      #start new segment
+        }
     }
+    return(acc)
+}
+
+segment.parse.decel <- function(trip, tmin=1, tmax=nrow(trip), thresh=5) {
+    tmin <- max(1, tmin)
+    tmax <- min(tmax, nrow(trip))
+    ma <- 5  
+    
+    v.ma <- filter( trip[tmin:tmax, ]$v, rep(1/ma,ma), sides=2)
+    t.loss <- floor( ma / 2)
+    
+    dec <- data.frame( t0=integer(), tn=integer(), v0=numeric(), vn=numeric(), a.mid=numeric() )  # straight segments
+    t0 <- t.loss + 1
+    v0 <- vn <- v.ma[t0]
+    for (t in (t.loss+2):(length(v.ma)-t.loss)) {
+        vt <- v.ma[t]
+        if ( vt < vn ) {    #deceleration   #NOTE: besides names, this is the only diff for accel code (?)
+            vn <- vt 
+        } else {            #acceleration
+            if ( abs(vn - v0) >= abs(thresh) & t - t0 > 5 ) {               #exceeded threshold 
+                t.mid  <- round((t-1 + t0) / 2)
+                dec.seg <- data.frame( t0=t0, tn=t-1, v0=v0, vn=vn, a.mid=(v.ma[t.mid+1] - v.ma[t.mid]))
+                dec <- rbind( dec, dec.seg)
+            }
+            t0 <- t
+            v0 <- vn <- vt      #start new segment
+        }
+    }
+    return(dec)
+}

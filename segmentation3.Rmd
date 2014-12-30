@@ -1,0 +1,83 @@
+---
+title: "Segmentation of Trip Data - Part3"
+author: "Dave Hurst"
+date: "Thursday, December 25, 2014"
+output: html_document
+---
+```{r init, echo=FALSE}
+source("telematic_util.R")
+
+data.dir <- "c:/NO_BACKUP/kaggle/telematics/drivers"
+
+drivers.dir <- dir(data.dir)
+set.seed(2349)
+
+random.driver <- order(runif(1:length(drivers.dir), ))
+driver.df <- data.frame(id=integer()
+                        , speed.avg=numeric(), speed.max=numeric()
+                        , break.max=numeric(), accel.max=numeric())
+
+```
+## Investigate Trips with no segments
+
+### A note on the speed plot:
+
+See Part2 for background.
+
+Note ... this is starting to get slow, and I can't get caching to work.
+
+```{r seg0}
+
+driver.id <- 2591
+seg.summary <- data.frame( n.seg=integer(), trip.len=integer(), speed.avg=numeric(), speed.max=numeric(),
+                           seg.min=numeric(), seg.max=numeric(), seg.avg=numeric(), seg.sd=numeric())
+for(i.trip in 1:200) {
+    cat(i.trip,".")
+    trip <- getTrip( driver.id, i.trip )    
+    ss <- segment.parse.bearing(trip)
+    seg.summary[i.trip, ]$trip.len <- nrow(trip)
+    seg.summary[i.trip, ]$speed.avg <- mean(trip$v)
+    seg.summary[i.trip, ]$speed.max <- max(trip$v)
+    seg.summary[i.trip, ]$n.seg   <- nrow(ss)
+    if ( nrow(ss) > 0) {
+       seg.summary[i.trip, ]$seg.min <- min(ss$tlen)
+       seg.summary[i.trip, ]$seg.max <- max(ss$tlen)
+       seg.summary[i.trip, ]$seg.avg <- mean(ss$tlen)
+       seg.summary[i.trip, ]$seg.sd  <- sd(ss$tlen)
+    }
+}
+print(summary(seg.summary))
+
+seg0 <- which(seg.summary$n.seg == 0)
+seg0
+```
+
+### Trips with 0 segs
+
+Here's an example of the plots for these:
+```{r}
+trip.id <- 16
+trip <- getTrip( driver.id, trip.id )
+plotTrip(trip)
+plotTripSegment(trip, 1, 20000, t.mark=20)
+```
+
+* Trip 6: Extremely short trip (194 secs),  doesn't meet 30 sec criteria
+* Trip 16: Mirror image of Trip200.  Doesn't meet spead threshhold
+* Trip 40: Too short 181 secs
+* Trip 45... : yada yada yad
+
+
+This is starting to get redundant, so let's look at all the trips in sorted order (lowest trip time) in order to see what these contain that we could use.
+
+```{r}
+asc <- order(seg.summary$trip.len)
+print(seg.summary[asc, ])
+```
+
+```{r}
+trip.id <- 157
+trip <- getTrip( driver.id, trip.id )
+plotTrip(trip, t.mark=10)
+plotTripSegment(trip, 1, 10000, t.mark=20)
+```
