@@ -24,6 +24,19 @@ v.up <- 100; v.dn <- 0
 v.inc <- 10
 dist <- 0
 
+in.zone <- function(t, b) {
+    b <- sort(b)
+    if (t < b[1]) return (FALSE)
+    for (i in 2:length(b)) {
+        if (i %% 2 == 0) {
+            if ( t <= b[i] ) return(TRUE)
+        } else {
+            if ( t <= b[i] ) return(FALSE)
+        }
+    }   
+    return (FALSE)
+}
+
 plotTrip <- function(trip, v.mark=5, t.mark=100, tmin=1, tmax=nrow(trip), b.marks=NULL, header=TRUE) {
     tmin <- max(tmin, 1)
     tmax <- min(tmax, nrow(trip))
@@ -33,7 +46,10 @@ plotTrip <- function(trip, v.mark=5, t.mark=100, tmin=1, tmax=nrow(trip), b.mark
     plot(trip[tmin:tmax, 1:2], type="n", asp=1)
     if(header) mtext("Plot of Route", line=4)
     
-    a.thresh = 1
+    accel <- segment.parse.accel(trip)
+    decel <- segment.parse.decel(trip)
+    accel.bound <- sort( c( accel$t0, accel$tn))
+    decel.bound <- sort( c( decel$t0, decel$tn))
     
     markSpeed(trip[tmin,])
     current <- numeric(4); names(current) <- c('dist', 'v', 'a', 'heading')
@@ -43,8 +59,10 @@ plotTrip <- function(trip, v.mark=5, t.mark=100, tmin=1, tmax=nrow(trip), b.mark
         i.v <- trip[i,"v"]
         i.a <- trip[i,"a"]
         thk <- round( i.v / 2)
-        color <- ifelse( abs(i.a) < a.thresh, "orange", 
-                         ifelse(    (i.a) > 0, "green", "red") ) 
+        
+        color <- ifelse ( in.zone( i, accel.bound), "green",
+                 ifelse ( in.zone( i, decel.bound), "red",   "orange"))
+        
         lines( trip[c(i,i-1), 1], trip[c(i,i-1), 2], type="l", lwd=thk, col=color)
         if( i.v > v.up | i.v < v.dn ) markSpeed( trip[i, ])
         

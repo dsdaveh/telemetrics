@@ -2,7 +2,7 @@
 title: "Trip Analyzer"
 author: "Dave Hurst"
 date: "Wednesday, December 24, 2014"
-output: pdf_document
+output: html_document
 ---
 
 I think the key to creating a *fingerprint* for a driver is to analyze their patterns in specific driving circumstances.  To figure out the important features, I wanted a tool to look at the data as trip, beyond just simple route plots.
@@ -49,7 +49,7 @@ plotTrip(trip, v.mark=50)
   
 The first number (17) at x=y=0 is the initial speed.  Since this isn't 0 in this case, we know that the beginning of the trip has been removed.  The small "t=NNN" indicate where the driver is at different time points (in seconds) on the trip, this can be adjusted by calling `plotTrip` with `t.mark=100`.
 
-The thickness of the line is relative to the speed, so as the driver slows down, so does that line.  The green segments are segments where the driver is accelerating (beyond a fixed noise value of 1 m/s^2). Conversely, red segments show the driver braking (decelerating > 1 m/s^2).
+The thickness of the line is relative to the speed, so as the driver slows down, so does that line.  The green segments are segments where the driver is accelerating ~~(beyond a fixed noise value of 1 m/s^2)~~. Conversely, red segments show the driver braking ~~(decelerating > 1 m/s^2)~~.
 
 The `v.mark=50` parameter controls printing of the drivers speed (in m/s) in predetermined thresholds, so setting it to 50 effectively turns it off (except for the first point which is always plotted).  It's more useful for trip segments where the range of speed isn't too varied.  Plot a segment by specifying `tmin` and `tmax` as shown (note `v.mark=5` by default)
 
