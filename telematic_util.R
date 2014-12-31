@@ -118,7 +118,7 @@ plotTripSegment.speed <- function (trip, tmin=1, tmax=tmin+100, f=.01, b.marks=N
     }
 }
 
-plotTripSegment <- function(trip, tmin=1, tmax=tmin+100, f=.01, b.marks=NULL, b.col="red", ...) {
+plotTripSegment <- function(trip, tmin=1, tmax=tmin+100, ma=5, b.marks=NULL, b.col="red", ...) {
     tmin <- max(tmin, 1)
     tmax <- min(tmax, nrow(trip))
     par.orig <- par(mfrow=c(1,2))
@@ -126,7 +126,7 @@ plotTripSegment <- function(trip, tmin=1, tmax=tmin+100, f=.01, b.marks=NULL, b.
     plotTrip(trip, tmin=tmin, tmax=tmax, header=TRUE, ...)
     if (length(b.marks) > 0) overlaySegmentBorders( trip, b.marks, b.col=b.col )
     
-    plotTripSegment.speed( trip, tmin=tmin, tmax=tmax, b.marks=b.marks, b.col=b.col )
+    plotTripSegment.speed( trip, tmin=tmin, tmax=tmax, ma=ma, b.marks=b.marks, b.col=b.col )
     
     par(par.orig)
 }
@@ -230,7 +230,7 @@ getTripProfile <- function(trip ) {
     }
     acc <- segment.parse.accel(trip)
     prof$acc.n <- nrow(acc)
-    if ( nrow(straights) > 0) {
+    if ( nrow(acc) > 0) {
         len <- acc$tn - acc$t0
         prof$acc.len.min <- min( len ) 
         prof$acc.len.max <- max( len )
@@ -253,7 +253,7 @@ getTripProfile <- function(trip ) {
     
     dec <- segment.parse.decel(trip)
     prof$dec.n <- nrow(dec)
-    if ( nrow(straights) > 0) {
+    if ( nrow(dec) > 0) {
         len <- dec$tn - dec$t0
         prof$dec.len.min <- min( len ) 
         prof$dec.len.max <- max( len )
@@ -333,10 +333,9 @@ segment.parse.bearing <- function(trip, tmin=1, tmax=nrow(trip), zone=3) {
     return(ss)
 }
 
-segment.parse.accel <- function(trip, tmin=1, tmax=nrow(trip), thresh=5) {
+segment.parse.accel <- function(trip, tmin=1, tmax=nrow(trip), thresh=5, ma=5) {
     tmin <- max(1, tmin)
     tmax <- min(tmax, nrow(trip))
-    ma <- 5  
     
     v.ma <- filter( trip[tmin:tmax, ]$v, rep(1/ma,ma), sides=2)
     t.loss <- floor( ma / 2)
@@ -361,10 +360,9 @@ segment.parse.accel <- function(trip, tmin=1, tmax=nrow(trip), thresh=5) {
     return(acc)
 }
 
-segment.parse.decel <- function(trip, tmin=1, tmax=nrow(trip), thresh=5) {
+segment.parse.decel <- function(trip, tmin=1, tmax=nrow(trip), thresh=5, ma=5) {
     tmin <- max(1, tmin)
     tmax <- min(tmax, nrow(trip))
-    ma <- 5  
     
     v.ma <- filter( trip[tmin:tmax, ]$v, rep(1/ma,ma), sides=2)
     t.loss <- floor( ma / 2)
