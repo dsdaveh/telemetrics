@@ -56,8 +56,7 @@ for(driver in randomDrivers)
 target = 1
 names(target) = "target"
 submission = NULL
-#for(driver in drivers)
-for(driver in drivers[1:3])  #replace with the above line
+for(driver in drivers)
 {
   cat("calculating probabilities for driver", driver, "...\n")  #DAH mod_1
   dirPath = paste0(data.dir, '/', driver, '/')  #DAH-mod
