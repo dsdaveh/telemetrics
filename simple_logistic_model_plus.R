@@ -28,8 +28,7 @@ for(driver in randomDrivers)
   
   #calculate imputed values
   driver.df <- drivers.df[drivers.df$driver == driver, ]
-  feat <- driver.df[ , c(5,13,14,25,26,27,38,39)]
-  attach(driver.df)
+  attach(driver.df, warn.conflicts=FALSE)
   wavg.feature  <- numeric(5)
   wavg.feature[1]   <- sum(ss.vmid.sd   * ss.n,  na.rm=TRUE) / sum(ss.n)
   wavg.feature[2]   <- sum(acc.amid.avg * acc.n, na.rm=TRUE) / sum(acc.n)
@@ -45,8 +44,9 @@ for(driver in randomDrivers)
       f.vitesse = speedDistribution(trip)
       
       #segment derived features
-      f.seg <- driver.df[driver.df$trip==i ,c(13,25,26,38,39)]
+      f.seg <- as.numeric(driver.df[driver.df$trip==i ,c(13,25,26,38,39)])
       for (f in 1:5) f.seg[f] <- ifelse( is.na(f.seg[f]), wavg.feature[f], f.seg[f])   #replace NA with imputed
+      names(f.seg) <- colnames(driver.df[, c(13,25,26,38,39)])
       
       features <- c( f.vitesse, f.seg, target) 
       refData = rbind(refData, features)
@@ -56,7 +56,8 @@ for(driver in randomDrivers)
 target = 1
 names(target) = "target"
 submission = NULL
-for(driver in drivers)
+#for(driver in drivers)
+for(driver in drivers[1:3])  #replace with the above line
 {
   cat("calculating probabilities for driver", driver, "...\n")  #DAH mod_1
   dirPath = paste0(data.dir, '/', driver, '/')  #DAH-mod
@@ -64,8 +65,7 @@ for(driver in drivers)
   
   #calculate imputed values
   driver.df <- drivers.df[drivers.df$driver == driver, ]
-  feat <- driver.df[ , c(5,13,14,25,26,27,38,39)]
-  attach(driver.df)
+  attach(driver.df, warn.conflicts=FALSE)
    wavg.feature  <- numeric(5)
    wavg.feature[1]   <- sum(ss.vmid.sd   * ss.n,  na.rm=TRUE) / sum(ss.n)
    wavg.feature[2]   <- sum(acc.amid.avg * acc.n, na.rm=TRUE) / sum(acc.n)
@@ -85,11 +85,12 @@ for(driver in drivers)
     for (f in 1:5) f.seg[f] <- ifelse( is.na(f.seg[f]), wavg.feature[f], f.seg[f])   #replace NA with imputed
     names(f.seg) <- colnames(driver.df[, c(13,25,26,38,39)])
     
-    features <- c( f.vitesse, f.seg, target) 
+    features <- c( f.vitesse, f.seg, target)
     currentData = rbind(currentData, features)
   }
   train = rbind(currentData, refData)
-  train = as.data.frame(train)
+  rownames(train) <- 1:nrow(train)
+  train <- as.data.frame(train)
   g = glm(target ~ ., data=train, family = binomial("logit"))
   currentData = as.data.frame(currentData)
   p =predict(g, currentData, type = "response")
