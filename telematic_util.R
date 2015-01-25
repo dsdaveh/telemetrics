@@ -74,7 +74,7 @@ plotTrip <- function(trip, v.mark=5, t.mark=100, tmin=1, tmax=nrow(trip), b.mark
         current['heading'] <- ifelse( is.nan(bearing), bearing.last, bearing) %% 360
     }
     #print(trip[i,])
-    trip.info <- sprintf("distance traveled:%5.1f km\ndirection=%5.0f deg\ncurrent speed=%5.1f km/h\nacceleration=%5.1f m/s^2"
+    trip.info <- sprintf("distance traveled:%5.2f km\ndirection=%5.0f deg\ncurrent speed=%5.1f km/h\nacceleration=%5.1f m/s^2"
                          ,  current['dist'], current['heading'], current['v'], current['a'] )
     if(header) mtext(trip.info, adj=0, cex=.8)
     
@@ -83,8 +83,65 @@ plotTrip <- function(trip, v.mark=5, t.mark=100, tmin=1, tmax=nrow(trip), b.mark
     par(par.orig)
 }
 
+
+crossVec <- function (x,y) x[1]*y[2]-x[2]*y[1]
+
+calcRad.lineEq <- function( mx, pt ) {
+    # given a 2D vector mx passing thru pt, return the coefficients (m,b) of the line  y=mx+b
+    if (mx[1] == 0) mx[1] <- .000001    #prevent div by 0
+    m = mx[2]/mx[1]
+    b = pt[2] - m * pt[1]
+    return( c(m, b))
+}
+
+plotTrip.r <- function( trip, tmin=1, tmax=nrow(trip)) {
+    rotate.90 <- matrix( c(0, 1, -1, 0), ncol=2)
+    t0 <- ifelse(tmin < 1, 1, tmin)
+    tn <- ifelse(tmax > nrow(trip), nrow(trip), tmax)
+    trip <- trip[t0:tn, ]
+    
+    origin <- matrix( rep(NA, nrow(trip) * 2), ncol=2 )
+    r <- numeric( nrow(trip))
+    pos.rv <- rep(1, nrow(trip)) 
+    xprod <- numeric( nrow(trip))
+    v.col <- rep("black", nrow(trip))
+    for (t in 1:(nrow(trip)-2)) {
+        if ( any( trip[(t+(1:2)), "v"] == 0 ) ) {   #indicates a speed=0 : break up segment
+            origin[ t+(1:2), 1:2 ] <- NA
+            r[ t+(1:2)] <- NA
+        } else {
+            v1 <- as.numeric(c( trip[t+1, c("x.d","y.d")])) / trip[t+1, "v"]  #heading unit vector
+            v2 <- as.numeric(c( trip[t+2, c("x.d","y.d")])) / trip[t+2, "v"]
+            xprod[t+1] <- crossVec( v1, v2)
+            mid1 <- colMeans( trip[ t   :(t+1), c("x","y")])
+            mid2 <- colMeans( trip[(t+1):(t+2), c("x","y")])
+            v1.90 <- rotate.90 %*% v1
+            v2.90 <- rotate.90 %*% v2
+            eq1 <- calcRad.lineEq( v1.90, mid1)
+            eq2 <- calcRad.lineEq( v2.90, mid2)
+            origin[t+1, 1] <- (eq2[2] - eq1[2]) / (eq1[1] - eq2[1])     #  x = b2-b1 / m1-m2
+            origin[t+1, 2] <- eq1[1] * origin[t+1, 1] + eq1[2]               #  y = mx + b
+            r[t+1] <- sqrt(sum( (origin[t+1,] - mid1)^2) )
+            #        cat("t,r,xprod", t,  r[t+1], xprod[t+1], " \n")
+            bearing <- calcBearing( trip[t+1, ], smooth=FALSE )
+            pos.rv[t+1] <- ifelse( abs(bearing < 45) | abs(bearing) > 135 , 1, 2)
+            v.col[t+1] <- ifelse( trip[t+1, "a"] > 0, "green" , "red")
+        }
+    }    
+    
+    plotTrip(trip)
+    r.switch <- c("red", ifelse( sign(xprod[-length(r)]) == sign(xprod[-1]), "black", "red") )
+    points ( type="p", c(trip[, "x"]), c(trip[, "y"]), asp=1, pch=20, col=r.switch)
+    text( trip[, "x"], trip[, "y"], label=round(r),pos=pos.rv)
+    text( trip[, "x"], trip[, "y"], label=round(trip$v), pos=pos.rv+2, col=v.col)
+}
+
+
+calcAngle <- function( a, b) acos( sum(a*b) / ( sqrt(sum(a * a)) * sqrt(sum(b * b)) ) )
+
 bearing.smooth <<- 0
 bearing.last   <<- 0
+
 calcBearing <- function( t, smooth=TRUE ) {
     #smooth causes a 2deg ccw rotation at 179 to go to 181 rather than -179
     #, but results in angles > 360  ... may be imperfect if there are large swings in bearings
@@ -161,6 +218,8 @@ plotTripSegment6 <- function(trip, tmin=1, tmax=tmin+100, ma=5, b.marks=NULL, b.
     par(par.orig)
     
 }
+
+
 
 overlaySegmentBorders <- function (trip, t.vec, size=nrow(trip)/2, b.col="red", ...) {
     rotate.90 <- matrix( c(0, 1, -1, 0), ncol=2)

@@ -1,0 +1,53 @@
+---
+title: "Segmentation of Trip Data by Radius - Part1"
+author: "Dave Hurst"
+date: "Monday, January 12, 2015"
+output: html_document
+---
+```{r init, echo=FALSE}
+source("telematic_util.R")
+
+data.dir <- "c:/NO_BACKUP/kaggle/telematics/drivers"
+
+drivers.dir <- dir(data.dir)
+set.seed(2349)
+```
+## Notes for automating segmenting a trip by changes in curvature
+
+I'm kind of starting over with the segmentation in order to see if I can break up a complete trip into contiguous segments.  The initial idea is to look at the curvature (based on the Radius), and when it disappears (straight segment) or flips (left curve to right curve), create a segment boundary.  I'll probably also want to segment based on stops/starts ... here goes...
+
+Again starting with the familiar 2591/49 trip:
+```{r plot6}
+driver.id <- 2591
+trip.id <- 49
+trip <- getTrip( driver.id, trip.id )
+
+plotTripSegment6(trip, 1, 99999)
+```  
+Note that this looks like a drive-thru run of sorts, where the beginning and end points are the same, and the driver is idling / moving very slowly from t=195 to t=325.  It's a good case because we can see information for both right and left hand turns for the same segments.
+
+What would a plot of the absolute Radius look like?  For now let's work on the first 50 seconds of the trip that appear to be some long curvy driveway.
+
+```{r plot_rad}
+plotTripSegment6(trip, 1, 50, t.mark=10)
+
+
+    
+#plot first 10 seconds with individual tick marks
+plotTripSegment(trip, 1, 50, t.mark=10)
+plotTrip.r(trip, tmin=1, tmax=50)
+t <- 1
+plot( type="p", c(trip[t:(t+5), "x"], origin[,1]), c(trip[t:(t+5), "y"], origin[,2]), asp=1)
+
+oplotVec <- function( mx, pt ) {
+    mx <- as.numeric(mx) ; pt <- as.numeric(pt)
+    pts = matrix( c(pt, mx+pt), ncol=2, byrow=T )
+    lines ( type="l", pts[ ,1], pts[ ,2] )
+}
+
+trip.save <- trip
+trip <- trip[1:10,]
+
+
+```
+
