@@ -445,3 +445,32 @@ segment.parse.decel <- function(trip, tmin=1, tmax=nrow(trip), thresh=5, ma=5) {
     }
     return(dec)
 }
+
+segment.parse.stops <- function(trip, tmin=1, tmax=nrow(trip), thresh.stop=1, thresh.roll=2, ma=5) {
+    tmin <- max(1, tmin)
+    tmax <- min(tmax, nrow(trip))
+    
+    stop <- data.frame( t0=integer(), tn=integer())  # stop segments
+    t0 <- 1
+    thresh <- thresh.stop
+    stopped <- FALSE
+    for (t in tmin:tmax) {
+        vt <- trip[t, "v"]
+        if ( stopped ) {
+            if ( vt > thresh.roll | t >= tmax) { # no longer stopped OR end of trip
+                #                cat ("end stop", t, vt, t0, "\n")
+                stop.seg <- data.frame( t0=t0, tn=t-1)        
+                stop <- rbind( stop, stop.seg)
+                stopped <- FALSE
+            }
+            
+        } else {
+            if ( vt <= thresh.stop ) {    #begin of new stop segment
+                t0 <- t      
+                #                cat ("start stop", t, vt, t0, "\n")
+                stopped <- TRUE
+            }
+        }
+    }
+    return(stop)
+}

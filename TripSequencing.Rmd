@@ -1,0 +1,118 @@
+---
+title: "Trip Sequencing Part 1"
+author: "Dave Hurst"
+date: "Sunday, January 25, 2015"
+output: pdf_document
+---
+
+Here I am working to convert a trip into a sequence of segments.  The input will be a full trip, and the output will be broken up into several components:
+- A list of segments, with details (or reference to details) on each segment
+- A sequence of segment ID's that comprise the trip
+- A set data for each segment type
+
+I'm going to try to reconstruct each trip out of segments made up of the following types:  
+
+* stops (no driver profile for these, but we need them to describe the segment)  
+* sharp turns  
+* curves (differentiated from sharp turns by radii (as a function of speed))  
+* bends ( differentiated from curves by time < 3 data points)  
+* straights  
+* uncategorized:  
+* - short straights (too short to collect profile info)  
+* - slow rolling sections (drive thrus, driveways, etc. -- no profile info)  
+* - windy sections (ideally break these up later)  
+* - other?  
+
+```{r init, echo=FALSE}
+library(knitr)
+source("telematic_util.R")
+
+data.dir <- "c:/NO_BACKUP/kaggle/telematics/drivers"
+
+drivers.dir <- dir(data.dir)
+set.seed(2349)
+```
+Again starting with the familiar 2591/49 trip:
+```{r plot6}
+driver.id <- 2591
+trip.id <- 49
+trip <- getTrip( driver.id, trip.id )
+
+plotTripSegment(trip, 1, 99999)
+```  
+
+## Stops and Rolls
+
+Looking at the speed profile there look to be 3 stops during this trip.   Since a stop sign or a drive thru could be a series of stops/slow rolls, and probably won't impart anything in terms of driving style, let's begin the stop segment anytime the speed drops below 1 m/s and continue it until we increases above a roll theshold (which I've arbitrarily set to 2 m/s after some emperical observations)
+
+*NOTE: Tunable parameters -* Stop and Roll threshold speeds 
+
+I wrote a function to find all the stops in a trip based on that criteria.  Here's an example using the current trip followed by the code for the function.
+
+```{r find.stops , results='asis'}
+stops <- segment.parse.stops(trip, thresh.stop=1, thresh.roll=2)
+stop.id <- 1:nrow(stops)
+kable( cbind( stop.id, stops), format = "markdown")
+```
+
+(t0 is the data point for the begin of the stop segment, and tn is the end)
+```{r}
+segment.parse.stops
+```
+
+When investigating these points, its useful to see use the PlotTripSegment function.  Just remember to set MA=1 to negate the smoothing, since I'm not applying smoothing for the segmentation analysis.  Here's and example
+```{r ex_stop4}
+stop <- stops[3,]
+plotTripSegment(trip, stop$t0-5, stop$tn+5, ma=1)
+```
+
+I add 5 seconds to either side of the segment to see what's going on with it.  In this case, notice we head right back into a stop, which implies the threshold for ending the stop may be too low.  I'll experiment with that below.
+
+
+Here's an overlay of the trip plot with the location of each segment
+```{r plot_stops}
+plotTrip.stopOverlay <- function (d,t, ths=1, thr=2) {
+    trip <- getTrip(d,t)
+    stops <- segment.parse.stops(trip, thresh.stop=ths, thresh.roll=thr)
+    print(stops)
+    plotTrip(trip)
+    for (i in 1:nrow(stops)) {
+        t0 <- stops[i, "t0"]; tn <- stops[i, "tn"]
+        loc.x <- mean( trip[c(t0,tn), "x"] )
+        loc.y <- mean( trip[c(t0,tn), "y"] )
+        points( loc.x, loc.y, pch = 5, cex=2)
+        text( loc.x, loc.y, labels=i)
+    }
+}
+
+plotTrip.stopOverlay(driver.id, trip.id)
+```
+
+Plot it again with a slightly higher roll threshold, and it looks  cleaner.
+```{r}
+plotTrip.stopOverlay(driver.id, trip.id, ths=1, thr=2.5)
+
+```
+
+And another for trip 150
+
+```{r}
+plotTrip.stopOverlay(driver.id, 150, ths=1, thr=2)
+```
+Note here that stops 2 and 3 are right on top of each other in what appears to be a Uturn in the segment. So a little investigation is in order.
+
+```{r}
+trip.id <- 150
+trip <- getTrip(driver.id, trip.id)
+stops <- segment.parse.stops(trip, thresh.stop=1, thresh.roll=2)
+print(stops)
+plotTripSegment(trip, 754, 834 , ma=1, t.mark=10)
+```
+
+This shows a stop then a slow roll between 3 and 4 m/s, but that threshold is too high I think, so we'll just have to live with the small segment in between (its about 25 m long).
+
+
+a good stopping point.
+
+
+

@@ -1,3 +1,4 @@
+NOT COMPLETE
 ---
 title: "Segmentation of Trip Data by Radius - Part1"
 author: "Dave Hurst"
