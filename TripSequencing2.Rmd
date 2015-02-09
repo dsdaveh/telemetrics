@@ -1,0 +1,84 @@
+---
+title: "Trip Sequencing Part 2"
+author: "Dave Hurst"
+date: "Sunday, February 8, 2015"
+output: pdf_document
+---
+
+Continuing the work to convert a trip into a sequence of segments.  The input will be a full trip, and the output will be broken up into several components:
+- A list of segments with details (or reference to details) on each segment
+- A sequence of segment ID's that comprise the trip
+- A of set data for each segment type
+
+I'm going to try to reconstruct each trip out of segments made up of the following types:  
+
+* stops *DONE: See part 1* (no driver profile for these, but we need them to describe the segment)  
+* sharp turns  
+* curves (differentiated from sharp turns by radii (as a function of speed))  
+* bends ( differentiated from curves by time < 3 data points)  
+* straights  
+* uncategorized:  
+* - short straights (too short to collect profile info)  
+* - slow rolling sections (drive thrus, driveways, etc. -- no profile info)  
+* - windy sections (ideally break these up later)  
+* - other?  
+
+```{r init, echo=FALSE}
+library(knitr)
+source("telematic_util.R")
+
+data.dir <- "c:/NO_BACKUP/kaggle/telematics/drivers"
+
+drivers.dir <- dir(data.dir)
+set.seed(2349)
+```
+Again starting with the familiar 2591/49 trip:
+```{r plot6}
+driver.id <- 2591
+trip.id <- 49
+trip <- getTrip( driver.id, trip.id )
+
+plotTripSegment(trip, 1, 99999)
+```  
+
+## Sharp Turns
+
+Rules for determining a sharp turn
+* R < 20 m
+* Direction of curvature must be identical throughout curve ( determined by cross product)
+
+*NOTE: Tunable parameters -* Radius as a function of velocity?
+
+First we need to parse the stops (from Part 1), and break the trip into segments
+
+```{r find.stops }
+
+trip.seg <- segment.by.stops(trip)
+trip.seg
+```
+
+I created a function to parse turns call segment.parse.turns.  We'll pass each unparsed segments (between stops above) to that to find all the sharp turns.
+
+
+
+```{r find.turns }
+trip.seg <- segment.by.turns( trip, trip.seg) 
+trip.seg
+```
+
+The modified `trip.seg` data frame is shown above.  For a little graphical verification, we'll strip out the "turns" and "stops" and overlay those boundaries agains the plot.  It's a little easier to see if we just take a small portion
+
+```{r plot50}
+plotTrip(trip, tmax=50, t.mark=5)
+segs.1 <- trip.seg[grepl("stop|turn", trip.seg$type) & trip.seg$t0 <50,]
+overlaySegmentBorders( trip, c( segs.1$t0, segs.1$tn), size= -1)
+segs.1
+```
+
+## Functions created/used
+```{r turn.func}
+segment.clean.points
+segment.by.stops
+segment.parse.turns
+segment.by.turns
+```
