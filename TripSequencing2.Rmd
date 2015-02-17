@@ -2,7 +2,7 @@
 title: "Trip Sequencing Part 2"
 author: "Dave Hurst"
 date: "Sunday, February 8, 2015"
-output: pdf_document
+output: html_document
 ---
 
 Continuing the work to convert a trip into a sequence of segments.  The input will be a full trip, and the output will be broken up into several components:
@@ -80,5 +80,6 @@ segs.1
 segment.clean.points
 segment.by.stops
 segment.parse.turns
+segment.parse.curve.gen
 segment.by.turns
 ```

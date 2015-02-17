@@ -204,23 +204,28 @@ overlaySegmentBorders( trip, c( segs.1$t0, segs.1$tn), size= -1)</code></pre>
 <pre class="r"><code>segment.parse.turns</code></pre>
 <pre><code>## function (trip, tmin = 1, tmax = nrow(trip)) 
 ## {
+##     segment.parse.curve.gen(trip, tmin, tmax, thresh = 20)
+## }</code></pre>
+<pre class="r"><code>segment.parse.curve.gen</code></pre>
+<pre><code>## function (trip, tmin = 1, tmax = nrow(trip), r.thresh = 20, t.thresh = 2) 
+## {
 ##     tmin &lt;- max(1, tmin)
 ##     tmax &lt;- min(tmax, nrow(trip))
 ##     turn &lt;- data.frame(t0 = integer(), tn = integer())
 ##     rinfo.trip &lt;- calc.rinfo(trip)
 ##     t0 &lt;- tmin
-##     thresh &lt;- 20
 ##     turning &lt;- FALSE
 ##     xprod.last &lt;- 0
 ##     for (t in (tmin + 1):tmax) {
 ##         rinfo &lt;- rinfo.trip[t, ]
 ##         if (turning) {
-##             if (xprod.last * rinfo$xprod &lt; 0 | rinfo$r &gt; thresh) {
+##             if (xprod.last * rinfo$xprod &lt; 0 | rinfo$r &gt; r.thresh) {
 ##                 tn &lt;- t - 1
 ##                 turn.seg &lt;- data.frame(t0 = t0, tn = tn)
 ##                 turn.info &lt;- cbind(trip[t0:tn, ], rinfo.trip[t0:tn, 
 ##                   ])
-##                 if (validate.turn(turn.info, rmax = thresh)) {
+##                 if (validate.turn(turn.info, r.thresh = r.thresh, 
+##                   t.thresh)) {
 ##                   turn &lt;- rbind(turn, turn.seg)
 ##                 }
 ##                 turning &lt;- FALSE
@@ -228,7 +233,7 @@ overlaySegmentBorders( trip, c( segs.1$t0, segs.1$tn), size= -1)</code></pre>
 ##             }
 ##         }
 ##         else {
-##             if (rinfo$r &lt;= thresh) {
+##             if (rinfo$r &lt;= r.thresh) {
 ##                 turning &lt;- TRUE
 ##                 t0 &lt;- t
 ##             }
@@ -238,48 +243,10 @@ overlaySegmentBorders( trip, c( segs.1$t0, segs.1$tn), size= -1)</code></pre>
 ##     return(turn)
 ## }</code></pre>
 <pre class="r"><code>segment.by.turns</code></pre>
-<pre><code>## function (trip, trip.seg) 
+<pre><code>## function (trip, trip.seg, r.thresh = 20) 
 ## {
-##     segs.unk &lt;- trip.seg[is.na(trip.seg$type), ]
-##     for (seg in segs.unk$id) {
-##         seg.data &lt;- segs.unk[segs.unk$id == seg, ]
-##         t.beg &lt;- seg.data$t0
-##         t.fin &lt;- seg.data$tn
-##         turns &lt;- with(seg.data, segment.parse.turns(trip, tmin = t.beg, 
-##             tmax = t.fin))
-##         if (nrow(turns) &gt; 0) {
-##             t &lt;- t.beg
-##             i.seg &lt;- nrow(trip.seg)
-##             for (i in 1:nrow(turns)) {
-##                 t0 &lt;- turns[i, &quot;t0&quot;]
-##                 tn &lt;- turns[i, &quot;tn&quot;]
-##                 if (t0 &gt; t) {
-##                   i.seg &lt;- i.seg + 1
-##                   trip.seg &lt;- rbind(trip.seg, data.frame(id = i.seg, 
-##                     t0 = t, tn = t0 - 1, type = NA, type.id = NA))
-##                 }
-##                 i.seg &lt;- i.seg + 1
-##                 trip.seg &lt;- rbind(trip.seg, data.frame(id = i.seg, 
-##                   t0 = t0, tn = tn, type = &quot;turn&quot;, type.id = i + 
-##                     (1000 * seg)))
-##                 t &lt;- tn + 1
-##             }
-##             if (t &lt;= t.fin) {
-##                 i.seg &lt;- i.seg + 1
-##                 trip.seg &lt;- rbind(trip.seg, data.frame(id = i.seg, 
-##                   t0 = t, tn = t.fin, type = NA, type.id = NA))
-##             }
-##             trip.seg[trip.seg$id == seg, &quot;type&quot;] &lt;- &quot;x.split&quot;
-##             turns$id &lt;- 1:nrow(turns) + seg * 1000
-##             if (exists(&quot;trip.turns&quot;)) {
-##                 trip.turns &lt;- rbind(trip.turns, turns)
-##             }
-##             else {
-##                 trip.turns &lt;- turns
-##             }
-##         }
-##     }
-##     segment.clean.points(trip.seg)
+##     segment.by.curve.gen(trip, trip.seg, r.thresh = r.thresh, 
+##         ctype = &quot;turn&quot;)
 ## }</code></pre>
 </div>
 

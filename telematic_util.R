@@ -83,6 +83,42 @@ plotTrip <- function(trip, v.mark=5, t.mark=100, tmin=1, tmax=nrow(trip), b.mark
     par(par.orig)
 }
 
+plotTripOverlay <- function(trip, segs, col="blue", lwd=4, tmin=1, tmax=nrow(trip)) {
+    # segs is a data frame with t0,tn columns for each row/segment to be overlayed
+    # col and lwd can be overridden by columns of the same name in segs
+    tmin <- max(tmin, 1)
+    tmax <- min(tmax, nrow(trip))
+    
+    for (i in 1:nrow(segs)) {
+        t0 <- segs[i, "t0"] 
+        tn <- segs[i, "tn"]
+        if (t0 < tmin | tn > tmax) next   #whole segment must lie within tmin/max range
+        
+        i.col <- ifelse( "col" %in% colnames(segs), segs[i,"col" ], col)
+        i.lwd <- ifelse( "lwd" %in% colnames(segs), segs[i,"lwd" ], lwd)
+        
+        if (t0 == tn) next  #skip special case (1 point in segment)
+        for (t in t0:(tn-1)) {
+            lines( trip[t:(t+1), "x"], trip[t:(t+1), "y"], col=i.col, lwd=i.lwd)
+        }
+    }
+}
+
+plotTrip.stopOverlay <- function(trip, stops, col="black", pch=5, cex=2, tmin=1, tmax=nrow(trip)) {
+    # stops is a data frame with t0,tn columns for each row/segment to be overlayed
+    # col and lwd can be overridden by columns of the same name in segs
+    tmin <- max(tmin, 1)
+    tmax <- min(tmax, nrow(trip))
+    for (i in 1:nrow(stops)) {
+        t0 <- stops[i, "t0"]; tn <- stops[i, "tn"]
+        if (t0 < tmin | tn > tmax) next   #whole segment must lie within tmin/max range
+        
+        loc.x <- mean( trip[c(t0,tn), "x"] )
+        loc.y <- mean( trip[c(t0,tn), "y"] )
+        points( loc.x, loc.y, pch = 5, cex=2)
+        text( loc.x, loc.y, labels=i)
+    }
+}
 
 crossVec <- function (x,y) x[1]*y[2]-x[2]*y[1]
 
@@ -95,47 +131,18 @@ calcRad.lineEq <- function( mx, pt ) {
 }
 
 plotTrip.r <- function( trip, tmin=1, tmax=nrow(trip)) {
-    rotate.90 <- matrix( c(0, 1, -1, 0), ncol=2)
-    t0 <- ifelse(tmin < 1, 1, tmin)
-    tn <- ifelse(tmax > nrow(trip), nrow(trip), tmax)
-    trip <- trip[t0:tn, ]
+    tmin <- max(1, tmin)
+    tmax <- min(tmax, nrow(trip))
     
-    origin <- matrix( rep(NA, nrow(trip) * 2), ncol=2 )
-    r <- numeric( nrow(trip))
-    pos.rv <- rep(1, nrow(trip)) 
-    xprod <- numeric( nrow(trip))
-    v.col <- rep("black", nrow(trip))
-    for (t in 1:(nrow(trip)-2)) {
-        if ( any( trip[(t+(1:2)), "v"] == 0 ) ) {   #indicates a speed=0 : break up segment
-            origin[ t+(1:2), 1:2 ] <- NA
-            r[ t+(1:2)] <- NA
-        } else {
-            v1 <- as.numeric(c( trip[t+1, c("x.d","y.d")])) / trip[t+1, "v"]  #heading unit vector
-            v2 <- as.numeric(c( trip[t+2, c("x.d","y.d")])) / trip[t+2, "v"]
-            xprod[t+1] <- crossVec( v1, v2)
-            mid1 <- colMeans( trip[ t   :(t+1), c("x","y")])
-            mid2 <- colMeans( trip[(t+1):(t+2), c("x","y")])
-            v1.90 <- rotate.90 %*% v1
-            v2.90 <- rotate.90 %*% v2
-            eq1 <- calcRad.lineEq( v1.90, mid1)
-            eq2 <- calcRad.lineEq( v2.90, mid2)
-            origin[t+1, 1] <- (eq2[2] - eq1[2]) / (eq1[1] - eq2[1])     #  x = b2-b1 / m1-m2
-            origin[t+1, 2] <- eq1[1] * origin[t+1, 1] + eq1[2]               #  y = mx + b
-            r[t+1] <- sqrt(sum( (origin[t+1,] - mid1)^2) )
-            #        cat("t,r,xprod", t,  r[t+1], xprod[t+1], " \n")
-            bearing <- calcBearing( trip[t+1, ], smooth=FALSE )
-            pos.rv[t+1] <- ifelse( abs(bearing < 45) | abs(bearing) > 135 , 1, 2)
-            v.col[t+1] <- ifelse( trip[t+1, "a"] > 0, "green" , "red")
-        }
-    }    
-    
-    plotTrip(trip)
-    r.switch <- c("red", ifelse( sign(xprod[-length(r)]) == sign(xprod[-1]), "black", "red") )
-    points ( type="p", c(trip[, "x"]), c(trip[, "y"]), asp=1, pch=20, col=r.switch)
-    text( trip[, "x"], trip[, "y"], label=round(r),pos=pos.rv)
-    text( trip[, "x"], trip[, "y"], label=round(trip$v), pos=pos.rv+2, col=v.col)
+    trip.rinfo <- calc.rinfo(trip, tmin=tmin, tmax=tmax)
+    plotTrip(trip, tmin=tmin, tmax=tmax)
+    with (trip.rinfo, {
+        r.switch <- c("red", ifelse( sign(xprod[-length(r)]) == sign(xprod[-1]), "black", "red") )
+        points ( type="p", c(trip[tmin:tmax, "x"]), c(trip[tmin:tmax, "y"]), asp=1, pch=20, col=r.switch)
+        text( trip[tmin:tmax, "x"], trip[tmin:tmax, "y"], label=round(r),pos=pos.rv)
+        text( trip[tmin:tmax, "x"], trip[tmin:tmax, "y"], label=round(trip[tmin:tmax,"v"]), pos=pos.rv+2, col=as.character(v.col))
+    })
 }
-
 
 calcAngle <- function( a, b) acos( sum(a*b) / ( sqrt(sum(a * a)) * sqrt(sum(b * b)) ) )
 
@@ -221,7 +228,11 @@ plotTripSegment6 <- function(trip, tmin=1, tmax=tmin+100, ma=5, b.marks=NULL, b.
 
 
 
-overlaySegmentBorders <- function (trip, t.vec, size=nrow(trip)/2, b.col="red", ...) {
+overlaySegmentBorders <- function (trip, t.vec, size=-1, b.col="red", ...) {
+    #size is in meters,  -1 will use 5% of the diagonal of the plot area
+    bbox <- par('usr') 
+    def.size <- sqrt( (bbox[1]-bbox[2])^2 + (bbox[3]-bbox[4])^2 ) / 20                      
+    size <- ifelse( size == -1, def.size, size)
     rotate.90 <- matrix( c(0, 1, -1, 0), ncol=2)
     ends <- matrix( rep(NA, 4), ncol=2)
     i <- 0
@@ -446,7 +457,7 @@ segment.parse.decel <- function(trip, tmin=1, tmax=nrow(trip), thresh=5, ma=5) {
     return(dec)
 }
 
-segment.parse.stops <- function(trip, tmin=1, tmax=nrow(trip), thresh.stop=1, thresh.roll=2, ma=5) {
+segment.parse.stops <- function(trip, tmin=1, tmax=nrow(trip), thresh.stop=1, thresh.roll=2) {
     tmin <- max(1, tmin)
     tmax <- min(tmax, nrow(trip))
     
@@ -473,4 +484,265 @@ segment.parse.stops <- function(trip, tmin=1, tmax=nrow(trip), thresh.stop=1, th
         }
     }
     return(stop)
+}
+
+xsegment.parse.turns <- function(trip, tmin=1, tmax=nrow(trip)) {
+    # IMPORTANT: this function assumes that parse.stops segments have been removed
+    tmin <- max(1, tmin)
+    tmax <- min(tmax, nrow(trip))
+    
+    turn <- data.frame( t0=integer(), tn=integer())  # turn segments
+    rinfo.trip <- calc.rinfo(trip)  # augmented radii info (for full trip)
+    
+    t0 <- tmin
+    thresh <- 20
+    turning <- FALSE
+    xprod.last <- 0   
+    for (t in (tmin+1):tmax) {  #cat(t,".")
+        rinfo <- rinfo.trip[t, ]
+        
+        if (turning) {
+            if ( xprod.last * rinfo$xprod < 0 | rinfo$r > thresh  ) { #came out of turn
+                tn <- t-1
+                turn.seg <- data.frame( t0=t0, tn=tn)
+                turn.info <- cbind(trip[t0:tn, ], rinfo.trip[t0:tn, ])
+                if (validate.turn( turn.info, r.thresh=thresh )) {
+#                     cat ("good turn:\n"); print(turn.seg)
+                    turn <- rbind(turn, turn.seg)
+                }
+                turning <- FALSE
+                t0 <- t
+            }
+        } else {
+            if ( rinfo$r <= thresh )  {   #start of a new turn (assume then check)
+                turning <- TRUE
+                t0 <- t
+            }
+        }
+        xprod.last <- rinfo$xprod
+    }
+    return(turn)
+}
+validate.turn <- function ( seg, r.thresh=20, t.thresh=2 ) {
+    # minimum of 2 consecutive points under the threshold radius
+    under <- seg$r <= r.thresh
+    maxrun <- run <- 0
+    for (i in under) { 
+        run <- ifelse (i , run + 1, 0)
+        maxrun <- max( maxrun, run)
+    }
+    if (maxrun < t.thresh) return (FALSE)
+    
+    return(TRUE)
+}
+
+calc.rinfo <- function ( trip, tmin=1, tmax=nrow(trip)) {
+    rotate.90 <- matrix( c(0, 1, -1, 0), ncol=2)
+    t0 <- ifelse(tmin < 1, 1, tmin)
+    tn <- ifelse(tmax > nrow(trip), nrow(trip), tmax)
+    trip <- trip[t0:tn, ]
+    
+    origin <- matrix( rep(NA, nrow(trip) * 2), ncol=2 )
+    r <- numeric( nrow(trip))
+    pos.rv <- rep(1, nrow(trip)) 
+    xprod <- numeric( nrow(trip))
+    v.col <- rep("black", nrow(trip))
+    for (t in 1:(nrow(trip)-2)) {
+        if ( any( trip[(t+(1:2)), "v"] == 0 ) ) {   #indicates a speed=0 : break up segment
+            origin[ t+(1:2), 1:2 ] <- NA
+            r[ t+(1:2)] <- NA
+        } else {
+            v1 <- as.numeric(c( trip[t+1, c("x.d","y.d")])) / trip[t+1, "v"]  #heading unit vector
+            v2 <- as.numeric(c( trip[t+2, c("x.d","y.d")])) / trip[t+2, "v"]
+            xprod[t+1] <- crossVec( v1, v2)
+            mid1 <- colMeans( trip[ t   :(t+1), c("x","y")])
+            mid2 <- colMeans( trip[(t+1):(t+2), c("x","y")])
+            v1.90 <- rotate.90 %*% v1
+            v2.90 <- rotate.90 %*% v2
+            eq1 <- calcRad.lineEq( v1.90, mid1)
+            eq2 <- calcRad.lineEq( v2.90, mid2)
+            origin[t+1, 1] <- (eq2[2] - eq1[2]) / (eq1[1] - eq2[1])     #  x = b2-b1 / m1-m2
+            origin[t+1, 2] <- eq1[1] * origin[t+1, 1] + eq1[2]               #  y = mx + b
+            r[t+1] <- sqrt(sum( (origin[t+1,] - mid1)^2) )
+            #        cat("t,r,xprod", t,  r[t+1], xprod[t+1], " \n")
+            bearing <- calcBearing( trip[t+1, ], smooth=FALSE )
+            pos.rv[t+1] <- ifelse( abs(bearing < 45) | abs(bearing) > 135 , 1, 2)
+            v.col[t+1] <- ifelse( trip[t+1, "a"] > 0, "green" , "red")
+        }
+    }    
+    return( data.frame( origin=origin, r=r, pos.rv=pos.rv, xprod=xprod, v.col=v.col ))
+}
+
+segment.parse.curves <- function(trip, tmin=1, tmax=nrow(trip)) {
+    segment.parse.curve.gen (trip, tmin, tmax, thresh=1000) 
+}
+
+segment.parse.turns <- function(trip, tmin=1, tmax=nrow(trip)) {
+    segment.parse.curve.gen (trip, tmin, tmax, thresh=20) 
+}
+
+    
+segment.parse.curve.gen <- function(trip, tmin=1, tmax=nrow(trip), r.thresh=20, t.thresh=2) {
+    # IMPORTANT: this function assumes that parse.stop segments have been removed
+    tmin <- max(1, tmin)
+    tmax <- min(tmax, nrow(trip))
+    
+    #rules:  4 points with identical curvature (direction) under R=thresh m
+    
+    turn <- data.frame( t0=integer(), tn=integer())  # turn segments
+    rinfo.trip <- calc.rinfo(trip)  # augmented radii info (for full trip)
+    
+    t0 <- tmin
+    turning <- FALSE
+    xprod.last <- 0   
+    for (t in (tmin+1):tmax) {  #cat(t,".")
+        rinfo <- rinfo.trip[t, ]
+        
+        if (turning) {
+            if ( xprod.last * rinfo$xprod < 0 | rinfo$r > r.thresh  ) { #came out of turn
+                tn <- t-1
+                turn.seg <- data.frame( t0=t0, tn=tn)
+                turn.info <- cbind(trip[t0:tn, ], rinfo.trip[t0:tn, ])
+                if (validate.turn( turn.info, r.thresh=r.thresh, t.thresh )) {
+                    #cat ("good turn:\n"); print(turn.seg)
+                    turn <- rbind(turn, turn.seg)
+                }
+                turning <- FALSE
+                t0 <- t
+            }
+        } else {
+            if ( rinfo$r <= r.thresh )  {   #start of a new turn (assume then check)
+                turning <- TRUE
+                t0 <- t
+            }
+        }
+        xprod.last <- rinfo$xprod
+    }
+    return(turn)
+}
+
+segment.clean.points <- function( s ) {
+    #s is the data frame of segments.  clean.points will set all segments of length 1 to type="point"
+    for (i in 1:nrow(s))  s[i,"type"] <- ifelse( s[i,"t0"] == s[i,"tn"], "x.point", s[i,"type"])
+    s
+}
+
+segment.by.stops <- function (trip, thresh.stop=1, thresh.roll=2) {
+    trip.seg <- data.frame( id=1, t0=1, tn=nrow(trip), type=NA, type.id=NA )
+    
+    stops <- segment.parse.stops(trip, thresh.stop=1, thresh.roll=2)
+    stop.id <- 1:nrow(stops)
+    stops <- cbind( stop.id, stops)
+    
+    t <- 1
+    i.seg <- orig.seg <- nrow(trip.seg)   # last segment written 
+    for (i in stop.id) {
+        t0 <- stops[i, "t0"]; tn <- stops[i, "tn"]
+        if (t0 > t) { 
+            i.seg <- i.seg + 1 
+            trip.seg <- rbind (trip.seg, data.frame( id=i.seg, t0=t, tn=t0-1, type=NA, type.id=NA ))
+        }
+        i.seg <- i.seg + 1
+        trip.seg <- rbind (trip.seg, data.frame( id=i.seg, t0=t0, tn=tn, type="stop", type.id=i ))
+        t <- tn + 1
+    }
+    
+    if ( nrow(stops) > 0 ) trip.seg[ orig.seg, "type"] <- "x.split"
+    
+    
+    segment.clean.points(trip.seg)
+}
+
+xsegment.by.turns <- function ( trip, trip.seg) {
+    
+    segs.unk <- trip.seg[ is.na(trip.seg$type), ]  # using the type=NA to determine the segments that need to be parsed
+    
+    for (seg in segs.unk$id) {
+        seg.data <- segs.unk[segs.unk$id==seg, ]
+        t.beg <- seg.data$t0 
+        t.fin <- seg.data$tn
+        turns <- with(seg.data, segment.parse.turns(trip, tmin=t.beg, tmax=t.fin))
+        
+        if (nrow(turns) > 0) {
+            t <- t.beg
+            i.seg <- nrow(trip.seg)   # last segment written 
+            for (i in 1:nrow(turns)) {  
+                t0 <- turns[i, "t0"]; tn <- turns[i, "tn"]  # t0,tn are beginning and end timepoints of turn
+                if (t0 > t) {                               # segment in front of the first turn (if any)
+                    i.seg <- i.seg + 1 
+                    trip.seg <- rbind (trip.seg, data.frame( id=i.seg, t0=t, tn=t0-1, type=NA, type.id=NA ))
+                }
+                i.seg <- i.seg + 1
+                # the turn id will be encoded so that id/1000 = segment and id%1000 = trip
+                trip.seg <- rbind (trip.seg, data.frame( id=i.seg, t0=t0, tn=tn, type="turn", type.id=i+(1000*seg) ))
+                t <- tn + 1
+            }
+            
+            if (t <= t.fin) {   # segment after the last turn (if any)
+                i.seg <- i.seg +1
+                trip.seg <- rbind (trip.seg, data.frame( id=i.seg, t0=t, tn=t.fin, type=NA, type.id=NA))
+            }
+            
+            trip.seg[ trip.seg$id == seg  , "type"] <- "x.split"  #mark this segment as split
+            
+            #marry the turns trip segment to a master list for the trip
+            turns$id <- 1:nrow(turns) + seg * 1000
+            if ( exists( "trip.turns")) { 
+                trip.turns <- rbind( trip.turns, turns)
+            } else {
+                trip.turns <- turns
+            }
+            
+        }
+    }
+    segment.clean.points(trip.seg)
+}
+
+segment.by.turns <- function ( trip, trip.seg, r.thresh=20 ) {
+    segment.by.curve.gen( trip, trip.seg, r.thresh=r.thresh, ctype="turn")
+}
+
+segment.by.curve.gen <- function ( trip, trip.seg, r.thresh=20, t.thresh=2, ctype="gen.curve") {
+    
+    segs.unk <- trip.seg[ is.na(trip.seg$type), ]  # using the type=NA to determine the segments that need to be parsed
+    
+    for (seg in segs.unk$id) {
+        seg.data <- segs.unk[segs.unk$id==seg, ]
+        t.beg <- seg.data$t0 
+        t.fin <- seg.data$tn
+        turns <- with(seg.data, segment.parse.curve.gen(trip, tmin=t.beg, tmax=t.fin, r.thresh=r.thresh, t.thresh=t.thresh))
+        
+        if (nrow(turns) > 0) {
+            t <- t.beg
+            i.seg <- nrow(trip.seg)   # last segment written 
+            for (i in 1:nrow(turns)) {  
+                t0 <- turns[i, "t0"]; tn <- turns[i, "tn"]  # t0,tn are beginning and end timepoints of turn
+                if (t0 > t) {                               # segment in front of the first turn (if any)
+                    i.seg <- i.seg + 1 
+                    trip.seg <- rbind (trip.seg, data.frame( id=i.seg, t0=t, tn=t0-1, type=NA, type.id=NA ))
+                }
+                i.seg <- i.seg + 1
+                # the turn id will be encoded so that id/1000 = segment and id%1000 = trip
+                trip.seg <- rbind (trip.seg, data.frame( id=i.seg, t0=t0, tn=tn, type=ctype, type.id=i+(1000*seg) ))
+                t <- tn + 1
+            }
+            
+            if (t <= t.fin) {   # segment after the last turn (if any)
+                i.seg <- i.seg +1
+                trip.seg <- rbind (trip.seg, data.frame( id=i.seg, t0=t, tn=t.fin, type=NA, type.id=NA))
+            }
+            
+            trip.seg[ trip.seg$id == seg  , "type"] <- "x.split"  #mark this segment as split
+            
+            #marry the turns trip segment to a master list for the trip
+            turns$id <- 1:nrow(turns) + seg * 1000
+            if ( exists( "trip.turns")) { 
+                trip.turns <- rbind( trip.turns, turns)
+            } else {
+                trip.turns <- turns
+            }
+            
+        }
+    }
+    segment.clean.points(trip.seg)
 }

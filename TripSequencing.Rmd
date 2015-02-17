@@ -2,7 +2,7 @@
 title: "Trip Sequencing Part 1"
 author: "Dave Hurst"
 date: "Sunday, January 25, 2015"
-output: pdf_document
+output: html_document
 ---
 
 Here I am working to convert a trip into a sequence of segments.  The input will be a full trip, and the output will be broken up into several components:
@@ -71,40 +71,34 @@ I add 5 seconds to either side of the segment to see what's going on with it.  I
 
 Here's an overlay of the trip plot with the location of each segment
 ```{r plot_stops}
-plotTrip.stopOverlay <- function (d,t, ths=1, thr=2) {
-    trip <- getTrip(d,t)
-    stops <- segment.parse.stops(trip, thresh.stop=ths, thresh.roll=thr)
-    print(stops)
-    plotTrip(trip)
-    for (i in 1:nrow(stops)) {
-        t0 <- stops[i, "t0"]; tn <- stops[i, "tn"]
-        loc.x <- mean( trip[c(t0,tn), "x"] )
-        loc.y <- mean( trip[c(t0,tn), "y"] )
-        points( loc.x, loc.y, pch = 5, cex=2)
-        text( loc.x, loc.y, labels=i)
-    }
-}
 
-plotTrip.stopOverlay(driver.id, trip.id)
+plotTrip(trip, header=F)
+stops <- segment.parse.stops(trip, thresh.stop=1, thresh.roll=2)
+plotTrip.stopOverlay(trip, stops)
+
 ```
 
 Plot it again with a slightly higher roll threshold, and it looks  cleaner.
 ```{r}
-plotTrip.stopOverlay(driver.id, trip.id, ths=1, thr=2.5)
+plotTrip(trip, header=F)
+stops <- segment.parse.stops(trip, thresh.stop=1, thresh.roll=2.5)
+plotTrip.stopOverlay(trip, stops)
 
 ```
 
 And another for trip 150
 
 ```{r}
-plotTrip.stopOverlay(driver.id, 150, ths=1, thr=2)
+trip.id <- 150
+trip <- getTrip(driver.id, trip.id)
+plotTrip(trip, header=F)
+stops <- segment.parse.stops(trip, thresh.stop=1, thresh.roll=2)
+plotTrip.stopOverlay(trip, stops)
+
 ```
 Note here that stops 2 and 3 are right on top of each other in what appears to be a Uturn in the segment. So a little investigation is in order.
 
 ```{r}
-trip.id <- 150
-trip <- getTrip(driver.id, trip.id)
-stops <- segment.parse.stops(trip, thresh.stop=1, thresh.roll=2)
 print(stops)
 plotTripSegment(trip, 754, 834 , ma=1, t.mark=10)
 ```
