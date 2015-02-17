@@ -2,7 +2,7 @@
 title: "Trip Sequencing Part 3"
 author: "Dave Hurst"
 date: "Monday, February 16, 2015"
-output: pdf_document
+output: html_document
 ---
 
 Continuing the work to convert a trip into a sequence of segments.  The input will be a full trip, and the output will be broken up into several components:
@@ -284,7 +284,34 @@ plotTripOverlay(trip, turns, tmin=200, lwd=6, col="magenta")
 plotTrip.stopOverlay(trip, stops, tmin=200)
    par(par.orig)
 ```
+And for grins, here's another trip (99)
 
+```{r trip99, fig.width=10}
+driver.id <- 2591
+trip.id <- 99
+trip <- getTrip( driver.id, trip.id )
+trip.seg <- segment.by.stops(trip)
+trip.seg <- segment.by.turns( trip, trip.seg)
+trip.seg <- segment.by.curve.gen( trip, trip.seg, r.thresh=300, t.thresh=4, ctype="curve")
+segs <- trip.seg[!grepl("^x", trip.seg$type), ]
+segs <- segs[ order(segs$t0),]
+curves <- segs[grepl("curve",segs$type), ]
+turns <- segs[grepl("turn",segs$type), ]
+stops <- segs[grepl("stop",segs$type), ]
+
+  par.orig <- par(mfrow=c(1,2))
+plotTrip       (trip,          header=F)
+plotTripOverlay(trip, curves)
+plotTripOverlay(trip, turns, lwd=6, col="magenta")
+plotTrip.stopOverlay(trip, stops)
+
+plotTrip       (trip, tmin=600,         header=F)
+plotTripOverlay(trip, tmin=600, curves)
+plotTripOverlay(trip, tmin=600, turns, lwd=6, col="magenta")
+plotTrip.stopOverlay(trip, stops)
+
+  par( par.orig )
+```
 
 ## Functions created/used  
 

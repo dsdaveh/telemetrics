@@ -486,43 +486,7 @@ segment.parse.stops <- function(trip, tmin=1, tmax=nrow(trip), thresh.stop=1, th
     return(stop)
 }
 
-xsegment.parse.turns <- function(trip, tmin=1, tmax=nrow(trip)) {
-    # IMPORTANT: this function assumes that parse.stops segments have been removed
-    tmin <- max(1, tmin)
-    tmax <- min(tmax, nrow(trip))
-    
-    turn <- data.frame( t0=integer(), tn=integer())  # turn segments
-    rinfo.trip <- calc.rinfo(trip)  # augmented radii info (for full trip)
-    
-    t0 <- tmin
-    thresh <- 20
-    turning <- FALSE
-    xprod.last <- 0   
-    for (t in (tmin+1):tmax) {  #cat(t,".")
-        rinfo <- rinfo.trip[t, ]
-        
-        if (turning) {
-            if ( xprod.last * rinfo$xprod < 0 | rinfo$r > thresh  ) { #came out of turn
-                tn <- t-1
-                turn.seg <- data.frame( t0=t0, tn=tn)
-                turn.info <- cbind(trip[t0:tn, ], rinfo.trip[t0:tn, ])
-                if (validate.turn( turn.info, r.thresh=thresh )) {
-#                     cat ("good turn:\n"); print(turn.seg)
-                    turn <- rbind(turn, turn.seg)
-                }
-                turning <- FALSE
-                t0 <- t
-            }
-        } else {
-            if ( rinfo$r <= thresh )  {   #start of a new turn (assume then check)
-                turning <- TRUE
-                t0 <- t
-            }
-        }
-        xprod.last <- rinfo$xprod
-    }
-    return(turn)
-}
+
 validate.turn <- function ( seg, r.thresh=20, t.thresh=2 ) {
     # minimum of 2 consecutive points under the threshold radius
     under <- seg$r <= r.thresh
@@ -550,7 +514,7 @@ calc.rinfo <- function ( trip, tmin=1, tmax=nrow(trip)) {
     for (t in 1:(nrow(trip)-2)) {
         if ( any( trip[(t+(1:2)), "v"] == 0 ) ) {   #indicates a speed=0 : break up segment
             origin[ t+(1:2), 1:2 ] <- NA
-            r[ t+(1:2)] <- NA
+            r[ t+(1:2)] <- 9999   #set the r to ~ inf
         } else {
             v1 <- as.numeric(c( trip[t+1, c("x.d","y.d")])) / trip[t+1, "v"]  #heading unit vector
             v2 <- as.numeric(c( trip[t+2, c("x.d","y.d")])) / trip[t+2, "v"]
@@ -599,6 +563,7 @@ segment.parse.curve.gen <- function(trip, tmin=1, tmax=nrow(trip), r.thresh=20, 
         rinfo <- rinfo.trip[t, ]
         
         if (turning) {
+            #dd="::"; cat("\n", xprod.last, dd,rinfo$xprod, dd, rinfo$r, dd, r.thresh, "\n")
             if ( xprod.last * rinfo$xprod < 0 | rinfo$r > r.thresh  ) { #came out of turn
                 tn <- t-1
                 turn.seg <- data.frame( t0=t0, tn=tn)
