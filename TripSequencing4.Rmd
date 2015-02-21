@@ -1,0 +1,108 @@
+---
+title: "Trip Sequencing Part 4"
+author: "Dave Hurst"
+date: "Monday, February 16, 2015"
+output: html_document
+---
+
+Continuing the work to convert a trip into a sequence of segments.  The input will be a full trip, and the output will be broken up into several components:
+- A list of segments with details (or reference to details) on each segment
+- A sequence of segment ID's that comprise the trip
+- A of set data for each segment type
+
+I'm going to try to reconstruct each trip out of segments made up of the following types:  
+
+- stops *DONE: See part 1* (no driver profile for these, but we need them to describe the segment)  
+- sharp turns  *DONE: See part 2*
+- curves (differentiated from sharp turns by radii (as a function of speed))  *DONE: See part 3*
+- ~~bends ( differentiated from curves by time < 3 data points)  ~~
+- *straights*  
+- uncategorized:  
+-- short straights (too short to collect profile info)  
+-- slow rolling sections (drive thrus, driveways, etc. -- no profile info)  
+-- windy sections (ideally break these up later)  
+-- other?  
+
+## Exploration 
+
+Same usual setup, same driver/trip 2591/49
+Overlay curves (blue), sharp turns (magenta), stops (diamonds)
+
+We'll also use the 'segment.parse.bearing' function created in Segmentation 2 as a starting point
+```{r init, echo=FALSE, fig.width=10}
+library(knitr)
+source("telematic_util.R")
+
+data.dir <- "c:/NO_BACKUP/kaggle/telematics/drivers"
+
+drivers.dir <- dir(data.dir)
+set.seed(2349)
+
+driver.id <- 2591
+trip.id <- 49
+trip <- getTrip( driver.id, trip.id )
+
+trip.seg <- segment.by.stops(trip)
+trip.seg <- segment.by.turns( trip, trip.seg)
+trip.seg <- segment.by.curve.gen( trip, trip.seg, r.thresh=300, t.thresh=4, ctype="curve")
+segs <- trip.seg[!grepl("^x", trip.seg$type), ]
+segs <- segs[ order(segs$t0),]
+curves <- segs[grepl("curve",segs$type), ]
+turns <- segs[grepl("turn",segs$type), ]
+stops <- segs[grepl("stop",segs$type), ]
+```
+```{r trip49, fig.width=10}
+
+ss <- segment.parse.bearing(trip)
+ss$tn <- ss$t0 + ss$tlen
+
+   par.orig <- par(mfrow=c(1,2))
+plotTrip       (trip,         tmax=200, header=F)
+plotTripOverlay(trip, curves, tmax=200)
+plotTripOverlay(trip, turns, tmax=200, lwd=6, col="magenta")
+plotTripOverlay(trip, ss, tmax=200, col="yellow")
+plotTrip.stopOverlay(trip, stops, tmax=200)
+
+plotTrip       (trip,         tmin=200, header=F)
+plotTripOverlay(trip, curves, tmin=200)
+plotTripOverlay(trip, turns, tmin=200, lwd=6, col="magenta")
+plotTripOverlay(trip, ss, tmin=200, col="yellow")
+plotTrip.stopOverlay(trip, stops, tmin=200)
+   par(par.orig)
+```
+
+And again for trip 99
+
+```{r trip99, fig.width=10}
+
+driver.id <- 2591
+trip.id <- 99
+trip <- getTrip( driver.id, trip.id )
+trip.seg <- segment.by.stops(trip)
+trip.seg <- segment.by.turns( trip, trip.seg)
+trip.seg <- segment.by.curve.gen( trip, trip.seg, r.thresh=300, t.thresh=4, ctype="curve")
+segs <- trip.seg[!grepl("^x", trip.seg$type), ]
+segs <- segs[ order(segs$t0),]
+curves <- segs[grepl("curve",segs$type), ]
+turns <- segs[grepl("turn",segs$type), ]
+stops <- segs[grepl("stop",segs$type), ]
+
+ss <- segment.parse.bearing(trip)
+ss$tn <- ss$t0 + ss$tlen
+
+  par(mfrow=c(1,2))
+plotTrip       (trip,          header=F)
+plotTripOverlay(trip, curves)
+plotTripOverlay(trip, turns, lwd=6, col="magenta")
+plotTripOverlay(trip, ss, col="yellow")
+plotTrip.stopOverlay(trip, stops)
+
+
+plotTrip       (trip, tmin=600,         header=F)
+plotTripOverlay(trip, tmin=600, curves)
+plotTripOverlay(trip, tmin=600, turns, lwd=6, col="magenta")
+plotTripOverlay(trip, ss, tmin=600, col="yellow")
+plotTrip.stopOverlay(trip, stops)
+
+  par( par.orig )
+```

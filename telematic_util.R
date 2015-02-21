@@ -592,6 +592,45 @@ segment.clean.points <- function( s ) {
     s
 }
 
+segment.parse.straight <- function(trip, tmin=1, tmax=nrow(trip), r.thresh=500, t.thresh=4) {
+    # IMPORTANT: this function assumes that parse.stop segments have been removed
+    tmin <- max(1, tmin)
+    tmax <- min(tmax, nrow(trip))
+    
+    #rules:  >= t.thresh points with over R=thresh m
+    
+    straight <- data.frame( t0=integer(), tn=integer())  # turn segments
+    rinfo.trip <- calc.rinfo(trip)  # augmented radii info (for full trip)
+    
+    t0 <- tmin
+    turning <- FALSE
+    for (t in (tmin+1):tmax) {  #cat(t,".")
+        rinfo <- rinfo.trip[t, ]
+        
+        if (! turning) {
+            #dd="::"; cat("\n", xprod.last, dd,rinfo$xprod, dd, rinfo$r, dd, r.thresh, "\n")
+            if ( rinfo$r < r.thresh  ) { # started a turn
+                tn <- t-1
+                straight.seg <- data.frame( t0=t0, tn=tn)
+                straight.info <- cbind(trip[t0:tn, ], rinfo.trip[t0:tn, ])
+                if ( (tn - t0) >= t.thresh ) {
+                    #cat ("good straight:\n"); print(straight.seg)
+                    straight <- rbind(straight, straight.seg)
+                }
+                turning <- TRUE
+                t0 <- t
+            }
+        } else {
+            if ( rinfo$r >= r.thresh )  {   #start of a new straight 
+                turning <- FALSE
+                t0 <- t
+            }
+        }
+    }
+    return(straight)
+}
+
+
 segment.by.stops <- function (trip, thresh.stop=1, thresh.roll=2) {
     trip.seg <- data.frame( id=1, t0=1, tn=nrow(trip), type=NA, type.id=NA )
     
@@ -618,50 +657,7 @@ segment.by.stops <- function (trip, thresh.stop=1, thresh.roll=2) {
     segment.clean.points(trip.seg)
 }
 
-xsegment.by.turns <- function ( trip, trip.seg) {
-    
-    segs.unk <- trip.seg[ is.na(trip.seg$type), ]  # using the type=NA to determine the segments that need to be parsed
-    
-    for (seg in segs.unk$id) {
-        seg.data <- segs.unk[segs.unk$id==seg, ]
-        t.beg <- seg.data$t0 
-        t.fin <- seg.data$tn
-        turns <- with(seg.data, segment.parse.turns(trip, tmin=t.beg, tmax=t.fin))
-        
-        if (nrow(turns) > 0) {
-            t <- t.beg
-            i.seg <- nrow(trip.seg)   # last segment written 
-            for (i in 1:nrow(turns)) {  
-                t0 <- turns[i, "t0"]; tn <- turns[i, "tn"]  # t0,tn are beginning and end timepoints of turn
-                if (t0 > t) {                               # segment in front of the first turn (if any)
-                    i.seg <- i.seg + 1 
-                    trip.seg <- rbind (trip.seg, data.frame( id=i.seg, t0=t, tn=t0-1, type=NA, type.id=NA ))
-                }
-                i.seg <- i.seg + 1
-                # the turn id will be encoded so that id/1000 = segment and id%1000 = trip
-                trip.seg <- rbind (trip.seg, data.frame( id=i.seg, t0=t0, tn=tn, type="turn", type.id=i+(1000*seg) ))
-                t <- tn + 1
-            }
-            
-            if (t <= t.fin) {   # segment after the last turn (if any)
-                i.seg <- i.seg +1
-                trip.seg <- rbind (trip.seg, data.frame( id=i.seg, t0=t, tn=t.fin, type=NA, type.id=NA))
-            }
-            
-            trip.seg[ trip.seg$id == seg  , "type"] <- "x.split"  #mark this segment as split
-            
-            #marry the turns trip segment to a master list for the trip
-            turns$id <- 1:nrow(turns) + seg * 1000
-            if ( exists( "trip.turns")) { 
-                trip.turns <- rbind( trip.turns, turns)
-            } else {
-                trip.turns <- turns
-            }
-            
-        }
-    }
-    segment.clean.points(trip.seg)
-}
+
 
 segment.by.turns <- function ( trip, trip.seg, r.thresh=20 ) {
     segment.by.curve.gen( trip, trip.seg, r.thresh=r.thresh, ctype="turn")

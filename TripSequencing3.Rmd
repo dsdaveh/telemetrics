@@ -130,7 +130,7 @@ Let's examine the discrepancies between the outgoing and return trips:
 We'll look a little closer at the start/end sections of the trip:
 
 ```{r plot.ends, fig.width=10}
-   par.orig <- par(mfrow=c(1,2))
+   par(mfrow=c(1,2))
 t1 <- 50
 t2 <- 480
 plotTrip       (trip,         tmax=t1, header=F, t.mark=10)
@@ -244,11 +244,6 @@ plotTrip.r       (trip, tmin=t2.0, tmax=t2.n)
 plotTripOverlay(trip, curves, tmin=t2.0, tmax=t2.n)
    par(par.orig)
 
-tt <- trip[c(t1.0:t1.n, t2.0,t2.n), ]
-par.orig <- par(mfrow=c(1,2))
-par.orig <- par(mfrow=c(1,1))
-plotTrip(tt)
-
 ```
 
 ## Conclusion
@@ -272,7 +267,7 @@ curves <- segs[grepl("curve",segs$type), ]
 turns <- segs[grepl("turn",segs$type), ]
 stops <- segs[grepl("stop",segs$type), ]
 
-   par.orig <- par(mfrow=c(1,2))
+   par(mfrow=c(1,2))
 plotTrip       (trip,         tmax=200, header=F)
 plotTripOverlay(trip, curves, tmax=200)
 plotTripOverlay(trip, turns, tmax=200, lwd=6, col="magenta")
@@ -299,7 +294,7 @@ curves <- segs[grepl("curve",segs$type), ]
 turns <- segs[grepl("turn",segs$type), ]
 stops <- segs[grepl("stop",segs$type), ]
 
-  par.orig <- par(mfrow=c(1,2))
+  par(mfrow=c(1,2))
 plotTrip       (trip,          header=F)
 plotTripOverlay(trip, curves)
 plotTripOverlay(trip, turns, lwd=6, col="magenta")
