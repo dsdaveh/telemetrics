@@ -30,8 +30,11 @@ Overlay curves (blue), sharp turns (magenta), stops (diamonds)
 
 We'll also use the 'segment.parse.bearing' function created in Segmentation 2 as a starting point.  In order to get a little more juice from the bearing metric, I've set the speed threshold for bearing calculation to 2 seconds (v.thresh=2).  Also I've adjusted the bearing "zone" to 4 (from 3 degrees in the Segmentation Part 2 doc).
 
+The 'straight' segments are overlayed in yellow.
+
 ```{r init, fig.width=10}
 library(knitr)
+library(reshape)
 source("telematic_util.R")
 
 data.dir <- "c:/NO_BACKUP/kaggle/telematics/drivers"
@@ -92,7 +95,12 @@ segment.summary <- function ( segs , trip ) {
     stats <- rbind(stats, data.frame(Type="loss", count=NA, total_t= loss, pct_of_trip= round(100*loss/nrow(trip), 2 )))
     stats
 }
-segment.summary( segs, trip)
+stats <- segment.summary( segs, trip)
+stats
+
+stats$driver <- driver.id
+stats$trip <- trip.id
+driver_stats <- stats
 
 ```
 
@@ -129,9 +137,18 @@ plotTripOverlay(trip, tmin=600, curves)
 plotTripOverlay(trip, tmin=600, turns, lwd=6, col="magenta")
 plotTripOverlay(trip, straights, tmin=600, lwd=2, col="yellow")
 plotTrip.stopOverlay(trip, stops)
-
   par( par.orig )
 
-segment.summary( segs, trip)
+stats <- segment.summary( segs, trip)
+stats
+stats$driver <- driver.id
+stats$trip <- trip.id
+
+driver_stats <- rbind(driver_stats, stats)
+```
+Comparing the two trips:
+```{r}
+cast( driver_stats[driver_stats$Type != "loss", ],  trip~Type, value="count" )
 
 ```
+

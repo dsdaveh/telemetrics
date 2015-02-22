@@ -359,18 +359,21 @@ overlayTripHeadings <- function (trip, mag=100, skip=10) {
     for (i in seq(1, nrow(trip), by=skip)) plotHeading( trip[i,], mag=mag)
 }
 
-MIN_SEGMENT_LENGTH <- 30
-segment.parse.bearing <- function(trip, tmin=1, tmax=nrow(trip), zone=3) {
+#MIN_SEGMENT_LENGTH <- 30  # replaced by tlen.min
+segment.parse.bearing <- function(trip, tmin=1, tmax=nrow(trip), zone=3, tlen.min=30) {
+#cat("spb: ", tmin, tmax, zone, tlen.min, "\n")
     tmin <- max(1, tmin)
     tmax <- min(tmax, nrow(trip))
     ma <- 5  
-    b.ima <- filter( diff(trip$bearing[tmin:tmax], lag=1), rep(1/ma,ma), sides=2)
+    b.ima.full <- filter( diff(trip$bearing, lag=1), rep(1/ma,ma), sides=2)
+    b.ima <- b.ima.full[tmin:tmax]
     
     in.zone <- ifelse( is.na(b.ima[1]), FALSE, abs(b.ima[1]) < zone )
-    t.start <- ifelse( in.zone, 2, 0)
+    t.start <- t.end <- ifelse( in.zone, tmin, 0)
     ss <- data.frame( t0=integer(), tlen=integer(),
                       v.min=numeric(), v.max=numeric(), v.mid=numeric() )  # straight segments
     for (i in 2:length(b.ima)) {
+        b.ima_i  <- b.ima[i]  # for debug listing
         t <- tmin + i -1
         in.zone <- ifelse( is.na(b.ima[i]), FALSE, abs(b.ima[i]) < zone )
         if ( in.zone ) { #in the zone
@@ -382,12 +385,8 @@ segment.parse.bearing <- function(trip, tmin=1, tmax=nrow(trip), zone=3) {
         } else {                 #out of the zone
             if (t.start > 0) {
                 seg.len <- t.end - t.start
-                if (seg.len >= MIN_SEGMENT_LENGTH) {
-                    seg.row <- data.frame( t0=t.start, tlen=seg.len)
-                    seg.row$v.min <- min( trip[t.start:t.end, ]$v)
-                    seg.row$v.max <- max( trip[t.start:t.end, ]$v)
-                    seg.row$v.mid <- min( trip[round((t.start+t.end)/2), ]$v)
-                    ss <- rbind(ss, seg.row)
+                if (seg.len >= tlen.min) {
+                    ss <- rbind( ss, segment.parse.bearing.write ( trip, t.start, t.end))
                 }
                 t.start <- 0
             }
@@ -395,12 +394,21 @@ segment.parse.bearing <- function(trip, tmin=1, tmax=nrow(trip), zone=3) {
     }
     if (t.start > 0) {
         seg.len <- t.end - t.start
-        if (seg.len >= MIN_SEGMENT_LENGTH) {
-            ss <- rbind(ss, data.frame( t0=t.start, tlen=seg.len))
+        if (seg.len >= tlen.min) {
+            ss <- rbind( ss, segment.parse.bearing.write ( trip, t.start, t.end))
         }
     }
         
     return(ss)
+}
+
+segment.parse.bearing.write <-function ( trip, t.start, t.end) {
+    seg.len <- t.end - t.start
+    seg.row <- data.frame( t0=t.start, tlen=seg.len)
+    seg.row$v.min <- min( trip[t.start:t.end, ]$v)
+    seg.row$v.max <- max( trip[t.start:t.end, ]$v)
+    seg.row$v.mid <- min( trip[round((t.start+t.end)/2), ]$v)
+    seg.row
 }
 
 segment.parse.accel <- function(trip, tmin=1, tmax=nrow(trip), thresh=5, ma=5) {
@@ -592,7 +600,8 @@ segment.clean.points <- function( s ) {
     s
 }
 
-segment.parse.straight <- function(trip, tmin=1, tmax=nrow(trip), r.thresh=500, t.thresh=4) {
+# abondoned this in lieu of the segment.parse.bearing since the local radii fluxuate too erratically
+x.segment.parse.straight <- function(trip, tmin=1, tmax=nrow(trip), r.thresh=500, t.thresh=4) {
     # IMPORTANT: this function assumes that parse.stop segments have been removed
     tmin <- max(1, tmin)
     tmax <- min(tmax, nrow(trip))
@@ -663,7 +672,9 @@ segment.by.turns <- function ( trip, trip.seg, r.thresh=20 ) {
     segment.by.curve.gen( trip, trip.seg, r.thresh=r.thresh, ctype="turn")
 }
 
-segment.by.curve.gen <- function ( trip, trip.seg, r.thresh=20, t.thresh=2, ctype="gen.curve") {
+segment.by.curve.gen <- function ( trip, trip.seg, r.thresh=20, t.thresh=2, zone=4, ctype="gen.curve") {
+    # The string value in ctype will be used for the segment type
+    # if ctype contains the string "straight" ...parse.straight is used otherwise ...parse.curve
     
     segs.unk <- trip.seg[ is.na(trip.seg$type), ]  # using the type=NA to determine the segments that need to be parsed
     
@@ -671,8 +682,12 @@ segment.by.curve.gen <- function ( trip, trip.seg, r.thresh=20, t.thresh=2, ctyp
         seg.data <- segs.unk[segs.unk$id==seg, ]
         t.beg <- seg.data$t0 
         t.fin <- seg.data$tn
-        turns <- with(seg.data, segment.parse.curve.gen(trip, tmin=t.beg, tmax=t.fin, r.thresh=r.thresh, t.thresh=t.thresh))
-        
+        if (grepl ("straight", ctype) ) {
+            straights <- segment.parse.bearing(trip, tmin=t.beg, tmax=t.fin, zone=zone, tlen.min=t.thresh)
+            turns <- with(straights, data.frame( t0=t0, tn=t0+tlen )) 
+        } else {
+            turns <- with(seg.data, segment.parse.curve.gen(trip, tmin=t.beg, tmax=t.fin, r.thresh=r.thresh, t.thresh=t.thresh))
+        }
         if (nrow(turns) > 0) {
             t <- t.beg
             i.seg <- nrow(trip.seg)   # last segment written 
