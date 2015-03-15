@@ -1,0 +1,127 @@
+---
+title: "Trip Acceleration Segments Part 1"
+author: "Dave Hurst"
+date: "Friday, March 6, 2015"
+output: html_document
+---
+
+```{r, echo=FALSE}
+library(knitr)
+source("telematic_util.R")
+data.dir <- "c:/NO_BACKUP/kaggle/telematics/drivers"
+```
+
+Working with just acceleration segments, let's see what we can figure out.
+
+Using  the 'getAccels' function, and 'gen_profiles_by_driver.R', I've got acceleration segment data for several drivers.  For now, we'll load 6 of them, which includes our buddy 2591, the driver we'll start trying to isolate.
+
+
+```{r loadacc, fig.width=10, cache=TRUE}
+set.seed(2349)
+drivers.dir <- dir(data.dir)
+random.driver <- order(runif(1:length(drivers.dir), ))
+driver.list <- drivers.dir[random.driver]  #needless complication that I'm stuck with at the moment
+accels.dir <- "profile_accels"
+segs.dir <-  "profile_segs"
+
+driver.id <- driver.list[1]
+accels.fn <- get.fname (accels.dir, driver.id, "accels")
+load( file=accels.fn )
+segs.fn <- get.fname (segs.dir, driver.id, "segs")
+load( file=segs.fn )
+asegs <- accels  # this is the data frame we'll get all the acceleration data in
+gsegs <- trip.seg # this is the data frame we'll get all the geometry data in
+
+for (driver.id in driver.list[2:6]) {
+    accels.fn <- get.fname (accels.dir, driver.id, "accels")
+    load( file=accels.fn )
+    asegs <- rbind(asegs, accels)
+    rm(accels)
+    
+    segs.fn <- get.fname (segs.dir, driver.id, "segs")
+    load( file=segs.fn )
+    gsegs <- rbind(gsegs, trip.seg)
+    rm(trip.seg)
+
+}
+gsegs <- gsegs[ !grepl( "^x.", gsegs$type ), ]  #remove the dead info
+
+head(asegs)
+head(gsegs)
+
+```
+We currently have data loaded for `r length( unique(asegs$driver))` drivers
+
+Q: How many acceleration segments do we have by velocity threshold  
+A: (a.mid has 100% coverage)
+```{r nsegs, echo=FALSE}
+colSums(! is.na(asegs[,5:9]))
+
+cat("by percentage:\n")
+round( 100*colSums(! is.na(asegs[,6:9]))/sum(! is.na(asegs[,5])), 1)
+```
+
+Plotting the first segment, we see a curve onto a relatively long straight.
+Here are plots through the straight way, and just beyond the accleration.  (note the acceleration phase continues, except for a brief deceleration (gear shift?)).
+
+```{r aseg1, fig.width=10}
+trip <- getTrip( 2591, 1)
+plotTrip( trip , tmin=21, tmax=125, t.mark=10)
+plotTripSegment( trip , tmin=21, tmax=65, t.mark=5, v.mark=2)
+```
+
+Q: How many acceleration segments are limited to just 1 or 2 geographical segments and with a straight segment that goes beyond the end of the acceleration by at least 5 seconds?
+
+A: 
+```{r segsub}
+xx <- with(asegs, asegs[ n.snip <= 2 & strt.overrun >= 5, ])
+nrow(xx)  
+
+#what's the number by driver?
+table(xx$driver)
+```
+This looks like enough to do things with by itself.  Let's repeat the velocity threshold question for this subset.
+Q: How many acceleration segments do we have by velocity threshold  
+A: 
+```{r nsegs.xx, echo=FALSE}
+colSums(! is.na(xx[,5:9]))
+
+```
+
+What's the next segment look like (From trip 3)
+
+```{r aseg2, fig.width=10}
+segx <- xx[2,]
+trip <- getTrip( segx$driver, segx$trip)
+plotTrip( trip , tmin=segx$snip.t0, tmax=segx$snip.tn, t.mark=10)
+plotTripSegment( trip , tmin=segx$t0-5, tmax=segx$tn+10, t.mark=5, v.mark=2)
+```
+
+and the next
+```{r aseg3, fig.width=10}
+segx <- xx[3,]
+trip <- getTrip( segx$driver, segx$trip)
+plotTrip( trip , tmin=segx$snip.t0, tmax=segx$snip.tn, t.mark=10)
+plotTripSegment( trip , tmin=segx$t0-5, tmax=segx$tn+10, t.mark=5, v.mark=2)
+```
+
+I think these all look similar enough to move on.  Let's do some EDA on the different features 
+
+```{r box1, fig.width=10, fig.height=10}
+par.orig <- par(mfrow=c(5,1), mar=c(2,3,1,1))
+for (i in 5:9) { boxplot( xx[,i] ~ xx$driver, main=colnames(xx)[i]) }
+par(par.orig)
+```
+These don't look terribly differentiated, but there is a weak pattern for the drivers.  Let's try and squeeze a little more juice from the rock:
+
+## Max acceleration for each segment xx)
+```{r maxa, fig.width=10}
+xx$grp <- "xx"
+asegs$grp <- "all"
+xx.all <- rbind(asegs, xx)
+xx.all$maxa <- apply( xx.all[ ,5:9], 1, max, na.rm=TRUE)
+xx.all$mina <- apply( xx.all[ ,5:9], 1, min, na.rm=TRUE)
+boxplot( xx.all$maxa ~ xx.all$driver, main="max a in segment")
+boxplot( xx.all$mina ~ xx.all$driver, main="min a in segment")
+```
+

@@ -1,0 +1,61 @@
+---
+title: "Manual Trip Matching for Driver 2591"
+author: "Dave Hurst"
+date: "Friday, March 6, 2015"
+output: html_document
+---
+
+```{r, echo=FALSE}
+library(knitr)
+source("telematic_util.R")
+data.dir <- "c:/NO_BACKUP/kaggle/telematics/drivers"
+segs.dir <- "profile_segs"
+
+driver.id <- 2591
+
+route.unk <- 1:200
+
+route.a <- c( 4, 10, 11, 16, 18, 37, 40, 43, 44, 45, 47, 49, 52, 53, 54, 63, 70, 80, 82, 90, 104, 105
+              , 107, 111, 115, 116, 117, 120, 121, 123, 130, 131, 138, 140, 142, 146, 149, 152, 154, 155
+              , 157, 162, 178, 180, 184, 189, 192, 198, 200)
+
+route.b <- c( 14, 67, 69, 74, 87, 181, 182, 191, 193)
+
+route.unk <- route.unk[ -c(route.a, route.b)]
+
+```
+
+#Route A
+
+Plotting the group of trips I'll call Route A
+```
+```{r routea, fig.width=10}
+print( route.a )
+par.orig <- par(mar=c(1,1,1,1), mfrow=c(1,2), ask=FALSE)
+for (trip.id in route.a) {
+    plotTrip( getTrip(driver.id, trip.id), header=FALSE)
+}
+```
+
+Notes:
+- 149 has a turn off the others don't
+
+## Route B
+
+```{r routeb, fig.width=10}
+print( route.b )
+par(mar=c(1,1,1,1), mfrow=c(1,2), ask=FALSE)
+for (trip.id in route.b) {     plotTrip( getTrip(driver.id, trip.id), header=FALSE)
+}
+```
+
+## Everything Else
+```{r routeunk, fig.width=10}
+print( route.b )
+par(mar=c(1,1,1,1), mfrow=c(1,2), ask=FALSE)
+for (trip.id in route.unk) {     plotTrip( getTrip(driver.id, trip.id), header=FALSE)
+}
+par(par.orig)
+```
+
+
