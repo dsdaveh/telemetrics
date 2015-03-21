@@ -8,6 +8,7 @@ output: html_document
 ```{r, echo=FALSE}
 library(knitr)
 source("telematic_util.R")
+library(car)  #used for boxplots
 data.dir <- "c:/NO_BACKUP/kaggle/telematics/drivers"
 ```
 
@@ -109,7 +110,7 @@ I think these all look similar enough to move on.  Let's do some EDA on the diff
 
 ```{r box1, fig.width=10, fig.height=10}
 par.orig <- par(mfrow=c(5,1), mar=c(2,3,1,1))
-for (i in 5:9) { boxplot( xx[,i] ~ xx$driver, main=colnames(xx)[i]) }
+for (i in 5:9) { Boxplot( xx[,i] ~ xx$driver, main=colnames(xx)[i]) }
 par(par.orig)
 ```
 These don't look terribly differentiated, but there is a weak pattern for the drivers.  Let's try and squeeze a little more juice from the rock:
@@ -121,7 +122,7 @@ asegs$grp <- "all"
 xx.all <- rbind(asegs, xx)
 xx.all$maxa <- apply( xx.all[ ,5:9], 1, max, na.rm=TRUE)
 xx.all$mina <- apply( xx.all[ ,5:9], 1, min, na.rm=TRUE)
-boxplot( xx.all$maxa ~ xx.all$driver, main="max a in segment")
-boxplot( xx.all$mina ~ xx.all$driver, main="min a in segment")
+Boxplot( xx.all$maxa ~ xx.all$driver, main="max a in segment")
+Boxplot( xx.all$mina ~ xx.all$driver, main="min a in segment")
 ```
 

@@ -1,0 +1,174 @@
+---
+title: "RHadoop Benchmark"
+author: "Dave Hurst"
+date: "Wednesday, March 18, 2015"
+output: html_document
+---
+
+```{r, echo=FALSE}
+# set R environments
+Sys.setenv(HADOOP_CMD="/home/hadoop/bin/hadoop")
+Sys.setenv(HADOOP_STREAMING="/home/hadoop/contrib/streaming/hadoop-streaming.jar")
+Sys.setenv(JAVA_HOME="/usr/java/latest/jre")
+
+library(rmr2);  
+library(jsonlite)
+
+map.driver <- function(k, v) {   
+    log <- sprintf("%s: begin map.drive with %d drivers\n", Sys.time() , length(v))
+    #     
+    #trips.json <- list()
+    trip.keys <- character()
+    p0 <- p1 <- proc.time()
+    done <- integer()
+    
+    trips <- data.frame()
+    for (driver.id in v) {
+        log <- paste0( log, sprintf("%d: ", driver.id))
+        for (trip.id in 1:N.TRIPS) {
+            trip.key <- paste0(driver.id, ".", trip.id)
+            trip <- getTrip( driver.id, trip.id, v.thresh=2, data=data)
+            trips <- rbind(trips, trip)
+            #trip.json <- toJSON( trip )
+            trip.keys <- c(trip.keys, trip.key)
+            #trips.json <- c(trips.json, trip.json)
+        }
+        p2 <- proc.time()
+        log <- paste0( log, sprintf(",%d", round((p2-p1)[3]) ) )
+        p1 <- p2
+        
+        done <- c(done, driver.id)
+    }
+    final.time <- round((p1-p0)[3])
+    log <- paste0( log
+                   , sprintf("\nCompleted drivers (%d secs): ", final.time)
+                   , paste0(done, collapse=","), "\n")
+    #keyval( c("log", trip.keys), c(log, trips.json) )
+    #keyval( c("log", "json_size"), c(log, object.size(trips.json)) )
+    keyval("head(trips)", head(trips))
+}
+getTrip <- function(driver.id, trip.id, v.thresh=5, data=NULL) {
+    
+    bearing.smooth <<- 0
+    bearing.last   <<- 0
+    trip <- with(data, data[driver==driver.id & tripnum==trip.id, 1:2] )  
+
+    trip.last <- trip[-nrow(trip), ]
+    trip <- trip[-1, ]   #first derivative 
+    trip$x.d <- trip$x - trip.last$x
+    trip$y.d <- trip$y - trip.last$y
+    trip$v <- sqrt( trip$x.d^2 + trip$y.d^2 )  # distance travelled per second
+    trip.last <- trip[-nrow(trip), 3:5 ]
+    trip <- trip[-1, ]    #2nd derivative 
+    trip$x.d2 <- trip$x.d - trip.last$x.d
+    trip$y.d2 <- trip$y.d - trip.last$y.d
+    trip$a <- trip$v - trip.last$v     
+    bearing <- numeric()
+    bearing.smooth <<- 0
+    bearing.last   <<- 0
+    for(i in 1:nrow(trip)) {
+        bearing[i] <- ifelse( trip[i,]$v > v.thresh, calcBearing( trip[i,]), NA )
+    }
+    trip <- cbind(trip, bearing)    
+    
+    trip$driver <- driver.id
+    trip$tripnum <- trip.id
+    
+    return(trip)
+}
+calcBearing <- function( t, smooth=TRUE ) {
+    #smooth causes a 2deg ccw rotation at 179 to go to 181 rather than -179
+    #, but results in angles > 360  ... may be imperfect if there are large swings in bearings
+    vx <- t$x.d
+    vy <- t$y.d
+    bearing <- atan(vy / vx) * 180/pi
+    if ( vx  < 0 )  {
+        if ( vy < 0 ) {   #3rd Quadrant
+            bearing <- bearing - 180  
+            if (bearing.last %% 360 <= 180) bearing.smooth <<- bearing.smooth + 360
+        } else {          #2nd Quadrant
+            bearing <- bearing + 180
+            if (bearing.last %% 360 > 180) bearing.smooth <<- bearing.smooth - 360
+        }
+    }
+    if (smooth) bearing <- bearing + bearing.smooth
+    if ( ! is.nan(bearing) ) bearing.last <<- bearing  
+    return(bearing)
+}
+```
+
+This benchmark compares feature extraction time for a subset of the kaggle telematics data in 3 separate run environments.  The benchmark is run in an AWS EMR cluster and uses 3 configurations:
+- R in native mode running on the master node
+- R with rmr running in local mode on the master node
+- R with rmr running in hadoop mode on the full cluster
+
+File Dependencies:
+- driver_2591_data.RData
+
+Load the data and print a few head and tail lines
+```{r load_data}
+load(file= "driver_2591_data.RData")
+head(data, 4)
+tail(data, 4)
+
+drivers = rep(2591, 5)  # process the same driver 5 times (approx 5 different drivers)
+N.TRIPS <- 200  # 200 for full set of trips, but reduce for dev/debug
+```
+
+## Test1 - R Native Environment
+```{r test1}
+p1 <- proc.time()
+trips <- data.frame()
+for (driver.id in drivers) {
+    for (trip.id in 1:N.TRIPS) { 
+        trips <- rbind(trips, getTrip( 2591, trip.id , v.thresh=2, data=data)) 
+    }
+}
+p2 <- proc.time()
+benchmark.times <- (p2-p1)[3]
+
+head(trips)
+object.size(trips)
+benchmark.times
+rm(trips)
+```
+
+## Test2 - rmr in local mode
+```{r test2}
+rmr.options(backend="local")
+
+p1 <- proc.time()
+out <- mapreduce(
+    input = to.dfs( drivers ),
+    map = map.driver 
+    )
+p2 <- proc.time()
+benchmark.times <- c( benchmark.times, (p2-p1)[3] )
+values(from.dfs(out))
+benchmark.times
+```
+## Test3 - rmr in hadoop mode
+```{r test3}
+rmr.options(backend="hadoop")
+
+p1 <- proc.time()
+out <- mapreduce(
+    input = to.dfs( drivers ),
+    map = map.driver 
+    )
+p2 <- proc.time()
+benchmark.times <- c( benchmark.times, (p2-p1)[3] )
+
+values(from.dfs(out))
+benchmark.times
+
+names(benchmark.times) <- c("Native R", "rmr LOCAL", "rmr HADOOP")
+barplot(benchmark.times, ylab="Time (sec)")
+```
+
+## Appendix - functions used in this benchmark
+```{r apx}
+map.driver
+getTrip
+calcBearing
+```

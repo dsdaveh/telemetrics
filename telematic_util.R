@@ -285,15 +285,31 @@ getTrip <- function(driver.id, trip.id, v.thresh=5, data=NULL) {
     i.jump <- 1
     while (length(jumps) >= i.jump) {
         t.jump <- jumps[i.jump]
-        
         #special case - if jump is at end of trip... lop it off
         if (t.jump > nrow(trip) - 2) {
             trip <- trip[1:(nrow(trip)-1), ]
             break;
         }
-        trip <- rbind( trip[1:(t.jump-1), ]          #segment prior to the jump
-                       , trip[t.jump, ]                #single point segment at the jump location
-                       , getTrip.features(trip[t.jump:nrow(trip), 1:2], v.thresh) )    #trip post jump
+        
+        t.orig <- as.integer(rownames(trip)[t.jump])  # index in raw xy data
+        
+        # calculate t.adj - the amount of time we need to add to simulate 
+        # a straight/steady acceleration path to bridge the jump
+        jump.s <- trip[t.jump, "v"]   # distance (=velocity for 1 sec)
+        jump.v0 <- trip[t.jump-1, "v"] #velocity prior to jump
+        jump.vn <- trip[t.jump+1, "v"] #velocity after jum
+        jump.v_avg <- mean( c(jump.v0, jump.vn) )
+        t.adj <- as.integer( jump.s / jump.v_avg )
+        
+        xy.n <- as.matrix( trip.xy[t.orig, ]   )
+        xy.0 <- as.matrix( trip.xy[t.orig-1, ] )
+        xy.adj <- (1:t.adj %*% ( xy.n - xy.0 ) / t.adj) + rep(xy.0, each=t.adj)
+        
+        #insert the interpolated points into the trip and recalc the entire trip.
+        trip.xy <- rbind(           trip.xy[1:(t.orig-1), ] 
+                          , xy.adj, trip.xy[(t.orig+1):nrow(trip.xy), ])
+        trip <- getTrip.features(trip.xy, v.thresh)
+        
         i.jump <- i.jump +1
         jumps <- which( abs(trip$a) > a.thresh)        
     }
