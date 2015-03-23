@@ -1,5 +1,15 @@
 if (! exists("segs.all")) segs.all <- data.frame()  # segment info in memory
-if (! exists("segs.jumps")) seg.jumps <- data.frame()
+if (! exists("seg.jumps")) seg.jumps <- data.frame()
+if (! exists("seg.stops")) seg.stops <- data.frame()
+if (! exists("seg.turns")) seg.turns <- data.frame()
+
+clearSegs <- function() {
+    segs.all <<- segs.all[-(1:nrow(segs.all)),]
+    seg.jumps <<- seg.jumps[-(1:nrow(seg.jumps)),]
+    seg.stops <<- seg.stops[-(1:nrow(seg.stops)),]
+    seg.turns <<- seg.turns[-(1:nrow(seg.turns)),]
+}
+# rm(segs.all, seg.jumps, seg.stops) 
 
 markSpeed <- function(t) {
     
@@ -48,7 +58,11 @@ plotTrip <- function(trip, v.mark=5, t.mark=100, tmin=1, tmax=nrow(trip), b.mark
     mar.top <- ifelse (header, 5, 2)
     par.orig <- par(mar=c(5,4,mar.top,2))
     
-    title <- sprintf("Plot of Trip %d (Driver %d)", trip[1,"tripnum"], trip[1,"driver"])
+    driver.id <- as.numeric(trip[1,"driver"])
+    trip.id <- trip[1,"tripnum"]
+    
+#    jumps <- seg.jumps[ seg.jumps$driver==driver.id & seg.jumps$tripnum==trip.id, ]
+    title <- sprintf("Plot of Trip %d (Driver %d)", trip.id, driver.id)
     xlab <- ifelse (header, "x", title)
     
     plot(trip[tmin:tmax, 1:2], type="n", asp=1, xlab=xlab)
@@ -58,16 +72,13 @@ plotTrip <- function(trip, v.mark=5, t.mark=100, tmin=1, tmax=nrow(trip), b.mark
     decel <- segment.parse.decel(trip)
     accel.bound <- sort( c( accel$t0, accel$tn))
     decel.bound <- sort( c( decel$t0, decel$tn))
-    
-    trip.seg <- segment.by.stops(trip)
-    jumps <- trip.seg[ which(trip.seg$type == "jump"), ]   #don't plot jumps
-    
+        
     markSpeed(trip[tmin,])
     current <- numeric(4); names(current) <- c('dist', 'v', 'a', 'heading')
     
     for (i in (tmin+1):tmax) {
-        if (i %in% jumps$t0) next;   # don't plot jumps
-        if (i %% t.mark == 0 ) markTime( trip[i, ], i) 
+#        if (i %in% jumps$t0) next;   # don't plot jumps
+        in.jump <- trip[i, "seg.type"] == "jump"
         i.v <- trip[i,"v"]
         i.a <- trip[i,"a"]
         thk <- round( i.v / 2)
@@ -75,7 +86,15 @@ plotTrip <- function(trip, v.mark=5, t.mark=100, tmin=1, tmax=nrow(trip), b.mark
         color <- ifelse ( in.zone( i, accel.bound), "green",
                  ifelse ( in.zone( i, decel.bound), "red",   "orange"))
         
-        lines( trip[c(i,i-1), 1], trip[c(i,i-1), 2], type="l", lwd=thk, col=color)
+        #jump style overrides
+        ltype <- 1
+        if (in.jump) {
+            ltype <- 2  # this will only show up on short segment plots
+            thk <- 1
+            color <- "black"
+        }
+        
+        lines( trip[c(i,i-1), 1], trip[c(i,i-1), 2], type="l", lwd=thk, col=color, lty=ltype)
         if( i.v > v.up | i.v < v.dn ) markSpeed( trip[i, ])
         
         current['dist'] <- current['dist'] + i.v/1000 #  dist.seg = speed * time (=1sec)
@@ -83,6 +102,8 @@ plotTrip <- function(trip, v.mark=5, t.mark=100, tmin=1, tmax=nrow(trip), b.mark
         current['a'] <- i.a
         bearing <- calcBearing( trip[i, ])
         current['heading'] <- ifelse( is.nan(bearing), bearing.last, bearing) %% 360
+        
+        if (i %% t.mark == 0 ) markTime( trip[i, ], i) 
     }
     #print(trip[i,])
     trip.info <- sprintf("distance traveled:%5.2f km\ndirection=%5.0f deg\ncurrent speed=%5.1f km/h\nacceleration=%5.1f m/s^2"
@@ -278,11 +299,51 @@ getTrip <- function(driver.id, trip.id, v.thresh=5, data=NULL) {
         trip.xy <- with(data, data[driver==driver.id & tripnum==trip.id, 3:4] )  
     }
     trip <- getTrip.features(trip.xy, v.thresh)
-    trip$seg.type <- NA
-    trip$seg.id   <- NA
+    trip$seg.type <- "unknown"
+    trip$seg.id   <- 0
+    trip$v.thresh <- v.thresh  #keep the v.thresh value this info was calculated with
+    trip$driver <- driver.id
+    trip$tripnum <- trip.id
     
+    trip <- getTrip.fixJumps( trip, trip.xy, a.thresh=50 )    # a=50 ~ 5g's
+    trip <- getTrip.identify.stops( trip )
+    trip <- getTrip.identify.turns( trip )
+    
+    return(trip)
+}
+
+getTrip.features <- function(trip, v.thresh) {
+    trip.last <- trip[-nrow(trip), ]
+    trip <- trip[-1, ]
+    trip$x.d <- trip$x - trip.last$x
+    trip$y.d <- trip$y - trip.last$y
+    trip$v <- sqrt( trip$x.d^2 + trip$y.d^2 )  # distance travelled per second
+    trip.last <- trip[-nrow(trip), 3:5 ]
+    trip <- trip[-1, ]
+    trip$x.d2 <- trip$x.d - trip.last$x.d
+    trip$y.d2 <- trip$y.d - trip.last$y.d
+    trip$a <- trip$v - trip.last$v     
+    bearing <- numeric()
+    bearing.smooth <<- 0
+    bearing.last   <<- 0
+    for(i in 1:nrow(trip)) {
+        bearing[i] <- ifelse( trip[i,]$v > v.thresh, calcBearing( trip[i,]), NA )
+    }
+    trip <- cbind(trip, bearing)
+    r.info <- calc.rinfo(trip)
+    trip$r <- r.info$r
+    trip$xprod <- r.info$xprod
+    
+    return(trip)
+}
+
+getTrip.fixJumps <- function( trip, trip.xy, a.thresh=50 ) {
     #fix hyperspace jumps (missing data)
-    a.thresh <- 50 #  5g's
+    
+    v.thresh <- trip$v.thresh[1]  #keep the v.thresh value this info was calculated with
+    driver.id <- trip$driver[1] 
+    trip.id <- trip$tripnum[1] 
+    
     jumps <- which( abs(trip$a) > a.thresh)
     i.jump <- 1
     jump.info <- data.frame()
@@ -320,21 +381,21 @@ getTrip <- function(driver.id, trip.id, v.thresh=5, data=NULL) {
         
         #insert the interpolated points into the trip and recalc the entire trip.
         trip.xy <- rbind(           trip.xy[1:(t.orig-1), ] 
-                          , xy.adj, trip.xy[(t.orig+1):nrow(trip.xy), ])
+                                    , xy.adj, trip.xy[(t.orig+1):nrow(trip.xy), ])
         trip <- getTrip.features(trip.xy, v.thresh)
         
         #restore the jump seg info
         tn.jump <- t.jump + t.adj - 2    # t0.jump = t.jump, but we don't define/use it
-        trip$seg.type <- NA
-        trip$seg.id   <- NA
+        trip$seg.type <- "unknown"
+        trip$seg.id   <- 0
         trip$seg.type[1:(t.jump-1)]  <- seg.type     
         trip$seg.id  [1:(t.jump-1)]  <- seg.id
         trip$seg.type[t.jump:tn.jump] <- "jump"
         trip$seg.id  [t.jump:tn.jump] <- i.jump
         jump.info <- rbind (jump.info,  data.frame( id=i.jump, t0=t.jump, tn=tn.jump
-                            , s.cum=jump.s, s.crow=jump.s, phi=jump.phi
-                            , v0=jump.v0, vn=jump.vn, v.mid=jump.v_avg
-                            , driver=driver.id, tripnum=trip.id) )
+                                                    , s.cum=jump.s, s.crow=jump.s, phi=jump.phi
+                                                    , v0=jump.v0, vn=jump.vn, v.mid=jump.v_avg
+                                                    , driver=driver.id, tripnum=trip.id) )
         
         i.jump <- i.jump +1
         jumps <- which( abs(trip$a) > a.thresh)        
@@ -344,29 +405,7 @@ getTrip <- function(driver.id, trip.id, v.thresh=5, data=NULL) {
     trip$tripnum <- trip.id
     
     seg.jumps <<- rbind(seg.jumps, jump.info)
-    
     return(trip)
-}
-
-getTrip.features <- function(trip, v.thresh) {
-    trip.last <- trip[-nrow(trip), ]
-    trip <- trip[-1, ]
-    trip$x.d <- trip$x - trip.last$x
-    trip$y.d <- trip$y - trip.last$y
-    trip$v <- sqrt( trip$x.d^2 + trip$y.d^2 )  # distance travelled per second
-    trip.last <- trip[-nrow(trip), 3:5 ]
-    trip <- trip[-1, ]
-    trip$x.d2 <- trip$x.d - trip.last$x.d
-    trip$y.d2 <- trip$y.d - trip.last$y.d
-    trip$a <- trip$v - trip.last$v     
-    bearing <- numeric()
-    bearing.smooth <<- 0
-    bearing.last   <<- 0
-    for(i in 1:nrow(trip)) {
-        bearing[i] <- ifelse( trip[i,]$v > v.thresh, calcBearing( trip[i,]), NA )
-    }
-    trip <- cbind(trip, bearing)
-    trip
 }
 
 getTripProfile <- function(trip ) {
@@ -696,21 +735,21 @@ segment.parse.curve.gen <- function(trip, tmin=1, tmax=nrow(trip), r.thresh=20, 
     #rules:  4 points with identical curvature (direction) under R=thresh m
     
     turn <- data.frame( t0=integer(), tn=integer())  # turn segments
-    rinfo.trip <- calc.rinfo(trip)  # augmented radii info (for full trip)
+    #rinfo.trip <- calc.rinfo(trip)  # augmented radii info (for full trip)  #XX NO LONGER NEEDED since r,xprod are in trip data
     
     t0 <- tmin
     turning <- FALSE
     xprod.last <- 0   
     for (t in (tmin+1):tmax) {  #cat(t,".")
                                 
-        rinfo <- rinfo.trip[t, ]
+        rinfo <- trip[t, c("r", "xprod")]
         
         if (turning) {
             #dd="::"; cat("\n", xprod.last, dd,rinfo$xprod, dd, rinfo$r, dd, r.thresh, "\n")
             if ( xprod.last * rinfo$xprod < 0 | rinfo$r > r.thresh  ) { #came out of turn
                 tn <- t-1
                 turn.seg <- data.frame( t0=t0, tn=tn)
-                turn.info <- cbind(trip[t0:tn, ], rinfo.trip[t0:tn, ])
+                turn.info <- trip[t0:tn, ]
                 if (validate.turn( turn.info, r.thresh=r.thresh, t.thresh )) {
                     #cat ("good turn:\n"); print(turn.seg)
                     turn <- rbind(turn, turn.seg)
@@ -828,56 +867,91 @@ segment.by.stops <- function (trip, thresh.stop=1, thresh.roll=2) {
 }
 
 getTrip.identify.stops <- function (trip, thresh.stop=1, thresh.roll=2) {
-    trip.seg <- data.frame( id=1, t0=1, tn=nrow(trip), type=NA, type.id=NA )
     
-    trip.seg <- segment.remove.jumps(trip, trip.seg)
+    stops <- segment.parse.stops(trip, thresh.stop=thresh.stop, thresh.roll=thresh.roll)
+    if ( nrow(stops) <= 0 ) return(trip)
+                        ################ 
     
-    segs.unk <- trip.seg[ is.na(trip.seg$type), ]  # using the type=NA to determine the segments that need to be parsed
+    stops <- cbind( id=1:nrow(stops), stops, s.cum=NA, s.crow=NA, phi=NA, v0=NA, vn=NA, v.mid=NA)
+    stops$driver <- trip$driver[1]
+    stops$tripnum <- trip$tripnum[1]
     
-    
-    for (seg in segs.unk$id) {
-        seg.data <- segs.unk[segs.unk$id==seg, ]
-        t.beg <- seg.data$t0 
-        t.fin <- seg.data$tn
+    for (stop in stops$id) {  
+        t0 <- stops[stop,"t0"]; tn <- stops[stop,"tn"]
+        xy.d <- trip[tn, 1:2] - trip[t0, 1:2]
+        names(xy.d) <- c("x.d", "y.d")
         
-        stops <- segment.parse.stops(trip, tmin=t.beg, tmax=t.fin, thresh.stop=1, thresh.roll=2)
-        if (exists("trip.stops")) {
-            trip.stops <- rbind( trip.stops, stops)
-        } else {
-            trip.stops <- stops
-        }
-    }
+        stops[stop, "s.cum"]  <- sum( trip[t0:tn, "v" ])
+        stops[stop, "s.crow"] <- sqrt( sum( xy.d ^ 2 ))
+        stops[stop, "phi"]    <- calcBearing( t=xy.d )
+        stops[stop, "v0"]    <- trip[t0, "v"]
+        stops[stop, "vn"]    <- trip[tn, "v"]
+        stops[stop, "v.mid"] <- stops[stop, "s.cum"] / (tn - t0)
+        
+        trip[t0:tn, "seg.type"] <- "stop"
+        trip[t0:tn, "seg.id"] <- stop
+    } 
+    seg.stops <<- rbind(seg.stops, stops)
     
-    if (nrow(trip.stops) > 0 ) {
-        stop.id <- 1:nrow(trip.stops)
-        trip.stops <- cbind( stop.id, trip.stops)
-        
-        
-        t <- 1
-        i.seg <- orig.seg <- nrow(trip.seg)   # last segment written 
-        for (i in stop.id) {
-            t0 <- trip.stops[i, "t0"]; tn <- trip.stops[i, "tn"]
-            if (t0 > t) { 
-                i.seg <- i.seg + 1 
-                trip.seg <- rbind (trip.seg, data.frame( id=i.seg, t0=t, tn=t0-1, type=NA, type.id=NA ))
-            }
-            i.seg <- i.seg + 1
-            trip.seg <- rbind (trip.seg, data.frame( id=i.seg, t0=t0, tn=tn, type="stop", type.id=i ))
-            t <- tn + 1
-        }
-        t.fin <- nrow(trip)
-        if (t <= t.fin) {   # segment after the last stop (if any)
-            i.seg <- i.seg +1
-            trip.seg <- rbind (trip.seg, data.frame( id=i.seg, t0=t, tn=t.fin, type=NA, type.id=NA))
-        }
-        
-        
-        trip.seg[ orig.seg, "type"] <- "x.split"
-    }
-    
-    segment.clean.points(trip.seg)
+    return(trip)
 }
 
+getTrip.identify.turns <- function (trip, r.thresh=20, t.thresh=2) {
+    unks <- getTrip.unclassified(trip)
+    turn.info <- data.frame()
+    
+    i.turn <- 0
+    for (i in 1:nrow(unks)) {
+        seg <- unks[i,]
+        if ( seg$tn - seg$t0 > 1) {
+            turns <- segment.parse.curve.gen(trip, tmin=seg$t0, tmax=seg$tn
+                                             , r.thresh=r.thresh, t.thresh=t.thresh)
+        } else { turns <- data.frame() }
+        if (nrow(turns) <= 0) next
+        for (j in nrow(turns)) {  
+            i.turn <- i.turn + 1
+            turn <- cbind( id=i.turn, turns[j, ])
+            
+            turn <- cbind( turn, s.cum = sum( trip[turn$t0:turn$tn, "v" ]))
+            xy.d <- trip[turn$tn, 1:2] - trip[turn$t0, 1:2]      
+            names(xy.d) <- c("x.d", "y.d")
+            turn <- cbind( turn, s.crow = sqrt( sum( xy.d ^ 2 )))
+            turn <- cbind( turn, phi = calcBearing( t=xy.d ))
+            turn <- cbind( turn, v0 = trip[ turn$t0, "v"] )
+            turn <- cbind( turn, vn = trip[ turn$tn, "v"] )
+            turn <- cbind( turn, v.mid = turn$s.cum / (turn$tn - turn$t0))
+  
+            turn <- cbind( turn, driver = trip$driver[1], tripnum = trip$tripnum[1] )
+            
+            trip[turn$t0:turn$tn, "seg.type"] <- "turn"
+            trip[turn$t0:turn$tn, "seg.id"] <- i.turn      
+
+            turn.info <- rbind( turn.info, turn)
+        }        
+    }
+    seg.turns <<- rbind(seg.turns, turn.info)
+    return(trip)
+}
+
+getTrip.unclassified <- function (trip) {
+    unks <- (1:nrow(trip))[ trip$seg.type == "unknown" ]
+    unks.tloc <- data.frame( t0=integer(), tn=integer())
+    
+    i <- t <- 1
+    if (length (unks) > 0) unks.tloc[i,"t0"] <- unks.tloc[i,"tn"] <- t.last <- unks[t]
+    while ( t < length(unks)) {
+        t <- t+1
+        
+        if ( unks[t] == t.last+1 ) {  #is this the next second?
+            unks.tloc[i,"tn"] <- t.last <- unks[t]
+            
+        } else {  #no, start a new segment
+            i <- i+1
+            unks.tloc[i,"t0"] <- unks.tloc[i,"tn"] <- t.last <- unks[t]
+        }
+    }
+    return( unks.tloc )
+}
 
 segment.by.turns <- function ( trip, trip.seg, r.thresh=20 ) {
     segment.by.curve.gen( trip, trip.seg, r.thresh=r.thresh, ctype="turn")
