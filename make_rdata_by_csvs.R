@@ -11,7 +11,7 @@ files <- files[ grep("chunk_.*\\.csv", files) ]
 for (f in files) {
     fid <- str_extract( f, "\\d+")
     cat("fid", fid, "\n")
-    #if (as.integer(fid) <= 9) next #already wrote these
+    #wrif (as.integer(fid) <= 9) next #already wrote these
     f.rdata <- sprintf("chunk_%s.RData", fid)   # guess I could have just subbed csv and RData
     data <- read.csv( f )
     ndrivers <- length(unique(data$driver))

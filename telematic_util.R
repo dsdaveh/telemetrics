@@ -2,12 +2,14 @@ if (! exists("segs.all")) segs.all <- data.frame()  # segment info in memory
 if (! exists("seg.jumps")) seg.jumps <- data.frame()
 if (! exists("seg.stops")) seg.stops <- data.frame()
 if (! exists("seg.turns")) seg.turns <- data.frame()
+if (! exists("seg.straights")) seg.straights <- data.frame()
 
 clearSegs <- function() {
     segs.all <<- segs.all[-(1:nrow(segs.all)),]
     seg.jumps <<- seg.jumps[-(1:nrow(seg.jumps)),]
     seg.stops <<- seg.stops[-(1:nrow(seg.stops)),]
     seg.turns <<- seg.turns[-(1:nrow(seg.turns)),]
+    seg.straights <<- seg.straights[-(1:nrow(seg.straights)),]
 }
 # rm(segs.all, seg.jumps, seg.stops) 
 
@@ -262,6 +264,7 @@ plotTripSegment6 <- function(trip, tmin=1, tmax=tmin+100, ma=5, b.marks=NULL, b.
 
 overlaySegmentBorders <- function (trip, t.vec, size=-1, b.col="red", ...) {
     #size is in meters,  -1 will use 5% of the diagonal of the plot area
+    #t.vec is a vector of time points to show borders for
     bbox <- par('usr') 
     def.size <- sqrt( (bbox[1]-bbox[2])^2 + (bbox[3]-bbox[4])^2 ) / 20                      
     size <- ifelse( size == -1, def.size, size)
@@ -308,6 +311,7 @@ getTrip <- function(driver.id, trip.id, v.thresh=5, data=NULL) {
     trip <- getTrip.fixJumps( trip, trip.xy, a.thresh=50 )    # a=50 ~ 5g's
     trip <- getTrip.identify.stops( trip )
     trip <- getTrip.identify.turns( trip )
+    trip <- getTrip.identify.straights( trip )
     
     return(trip)
 }
@@ -348,7 +352,7 @@ getTrip.fixJumps <- function( trip, trip.xy, a.thresh=50 ) {
     i.jump <- 1
     jump.info <- data.frame()
     while (length(jumps) >= i.jump) {
-        t.jump <- jumps[i.jump]
+        t.jump <- jumps[1]
         #special case - if jump is at end of trip... lop it off
         if (t.jump > nrow(trip) - 2) {
             trip <- trip[1:(nrow(trip)-1), ]
@@ -357,7 +361,7 @@ getTrip.fixJumps <- function( trip, trip.xy, a.thresh=50 ) {
         seg.type <- trip$seg.type[1:(t.jump-1)]   #capture values previously set
         seg.id   <- trip$seg.id  [1:(t.jump-1)]
         
-        t.orig <- as.integer(rownames(trip)[t.jump])  # index in raw xy data
+        t.orig <- which( rownames(trip.xy) == rownames(trip)[t.jump])  # index in raw xy data
         
         # calculate t.adj - the amount of time we need to add to simulate 
         # a straight/steady acceleration path to bridge the jump
@@ -366,13 +370,14 @@ getTrip.fixJumps <- function( trip, trip.xy, a.thresh=50 ) {
         jump.v0 <- trip[t.jump-1, "v"] #velocity prior to jump
         jump.vn <- trip[t.jump+1, "v"] #velocity after jump
         jump.v_avg <- mean( c(jump.v0, jump.vn) )
-        t.adj <- as.integer( jump.s / jump.v_avg )
+        t.adj <- ifelse( abs(jump.v_avg) > .1, as.integer( jump.s / jump.v_avg ), 1) #special case v=0
         
         xy.n <- as.matrix( trip.xy[t.orig, ]   )
         xy.0 <- as.matrix( trip.xy[t.orig-1, ] )
         xy.adj <- (1:t.adj %*% ( xy.n - xy.0 ) / t.adj) + rep(xy.0, each=t.adj)
         
-        if (t.adj >=4 ) { #set end points so that velocity is constant
+        #set end points so that velocity is constant (only if there's enough runway)
+        if (t.adj > 8) {
             for (i in 1:2) {
                 xy.adj[i, ] <-         xy.0 + as.matrix(trip[(t.jump-1), 3:4] * i )
                 xy.adj[(t.adj-i), ] <- xy.n - as.matrix(trip[(t.jump+1), 3:4] * i )
@@ -394,7 +399,7 @@ getTrip.fixJumps <- function( trip, trip.xy, a.thresh=50 ) {
         trip$seg.id  [t.jump:tn.jump] <- i.jump
         jump.info <- rbind (jump.info,  data.frame( id=i.jump, t0=t.jump, tn=tn.jump
                                                     , s.cum=jump.s, s.crow=jump.s, phi=jump.phi
-                                                    , v0=jump.v0, vn=jump.vn, v.mid=jump.v_avg
+                                                    , v0=jump.v0, vn=jump.vn, v.avg=jump.v_avg
                                                     , driver=driver.id, tripnum=trip.id) )
         
         i.jump <- i.jump +1
@@ -494,21 +499,24 @@ overlayTripHeadings <- function (trip, mag=100, skip=10) {
 
 #MIN_SEGMENT_LENGTH <- 30  # replaced by tlen.min
 segment.parse.bearing <- function(trip, tmin=1, tmax=nrow(trip), zone=3, tlen.min=30) {
-#cat("spb: ", tmin, tmax, zone, tlen.min, "\n")
+    #zone can be a function of trip$v[t]
+    #cat("spb: ", tmin, tmax, zone, tlen.min, "\n")
     tmin <- max(1, tmin)
     tmax <- min(tmax, nrow(trip))
     ma <- 5  
     b.ima.full <- filter( diff(trip$bearing, lag=1), rep(1/ma,ma), sides=2)
     b.ima <- b.ima.full[tmin:tmax]
     
-    in.zone <- ifelse( is.na(b.ima[1]), FALSE, abs(b.ima[1]) < zone )
+    zone.chk <- ifelse(class(zone) == "function", zone( trip$v[tmin] ), zone )
+    in.zone <- ifelse( is.na(b.ima[1]), FALSE, abs(b.ima[1]) < zone.chk )
     t.start <- t.end <- ifelse( in.zone, tmin, 0)
     ss <- data.frame( t0=integer(), tlen=integer(),
                       v.min=numeric(), v.max=numeric(), v.mid=numeric() )  # straight segments
     for (i in 2:length(b.ima)) {
         b.ima_i  <- b.ima[i]  # for debug listing
         t <- tmin + i -1
-        in.zone <- ifelse( is.na(b.ima[i]), FALSE, abs(b.ima[i]) < zone )
+        zone.chk <- ifelse(class(zone) == "function", zone( trip$v[i] ), zone )
+        in.zone <- ifelse( is.na(b.ima[i]), FALSE, abs(b.ima[i]) < zone.chk )
         if ( in.zone ) { #in the zone
             if( t.start > 0) {
                 t.end <- t             #still in the zone
@@ -872,7 +880,7 @@ getTrip.identify.stops <- function (trip, thresh.stop=1, thresh.roll=2) {
     if ( nrow(stops) <= 0 ) return(trip)
                         ################ 
     
-    stops <- cbind( id=1:nrow(stops), stops, s.cum=NA, s.crow=NA, phi=NA, v0=NA, vn=NA, v.mid=NA)
+    stops <- cbind( id=1:nrow(stops), stops, s.cum=NA, s.crow=NA, phi=NA, v0=NA, vn=NA, v.avg=NA)
     stops$driver <- trip$driver[1]
     stops$tripnum <- trip$tripnum[1]
     
@@ -886,7 +894,7 @@ getTrip.identify.stops <- function (trip, thresh.stop=1, thresh.roll=2) {
         stops[stop, "phi"]    <- calcBearing( t=xy.d )
         stops[stop, "v0"]    <- trip[t0, "v"]
         stops[stop, "vn"]    <- trip[tn, "v"]
-        stops[stop, "v.mid"] <- stops[stop, "s.cum"] / (tn - t0)
+        stops[stop, "v.avg"] <- stops[stop, "s.cum"] / (tn - t0)
         
         trip[t0:tn, "seg.type"] <- "stop"
         trip[t0:tn, "seg.id"] <- stop
@@ -908,7 +916,7 @@ getTrip.identify.turns <- function (trip, r.thresh=20, t.thresh=2) {
                                              , r.thresh=r.thresh, t.thresh=t.thresh)
         } else { turns <- data.frame() }
         if (nrow(turns) <= 0) next
-        for (j in nrow(turns)) {  
+        for (j in 1:nrow(turns)) {  
             i.turn <- i.turn + 1
             turn <- cbind( id=i.turn, turns[j, ])
             
@@ -919,7 +927,7 @@ getTrip.identify.turns <- function (trip, r.thresh=20, t.thresh=2) {
             turn <- cbind( turn, phi = calcBearing( t=xy.d ))
             turn <- cbind( turn, v0 = trip[ turn$t0, "v"] )
             turn <- cbind( turn, vn = trip[ turn$tn, "v"] )
-            turn <- cbind( turn, v.mid = turn$s.cum / (turn$tn - turn$t0))
+            turn <- cbind( turn, v.avg = turn$s.cum / (turn$tn - turn$t0))
   
             turn <- cbind( turn, driver = trip$driver[1], tripnum = trip$tripnum[1] )
             
@@ -933,6 +941,45 @@ getTrip.identify.turns <- function (trip, r.thresh=20, t.thresh=2) {
     return(trip)
 }
 
+ZONE.DEFAULT <- 2
+getTrip.identify.straights <- function (trip, zone=ZONE.DEFAULT, t.thresh=5) {
+    unks <- getTrip.unclassified(trip)
+    straight.info <- data.frame()
+    
+    for (i in 1:nrow(unks)) {
+        seg <- unks[i,]
+        if ( seg$tn - seg$t0 > 1) {
+            straights <- segment.parse.bearing(trip, tmin=seg$t0, tmax=seg$tn
+                                             , zone=zone, tlen.min=t.thresh)
+        } else { straights <- data.frame() }
+        if (nrow(straights) <= 0) next
+   
+        #transform (legacy) straights data.frame
+        ss.all <- with(straights, data.frame(cbind( id=1:nrow(straights), t0, tn=t0+tlen-1)))
+        
+        for (j in 1:nrow(ss.all)) {  
+            ss <- ss.all[j, ]
+            ss$id <- nrow(straight.info) + 1
+            ss <- cbind( ss, s.cum = sum( trip[ss$t0:ss$tn, "v" ]))
+            xy.d <- trip[ss$tn, 1:2] - trip[ss$t0, 1:2]      
+            names(xy.d) <- c("x.d", "y.d")
+            ss <- cbind( ss, s.crow = sqrt( sum( xy.d ^ 2 )))
+            ss <- cbind( ss, phi = calcBearing( t=xy.d ))
+            ss <- cbind( ss, v0 = trip[ ss$t0, "v"] )
+            ss <- cbind( ss, vn = trip[ ss$tn, "v"] )
+            ss <- cbind( ss, v.avg = ss$s.cum / (ss$tn - ss$t0))
+            
+            ss <- cbind( ss, driver = trip$driver[1], tripnum = trip$tripnum[1] )
+            
+            trip[ss$t0:ss$tn, "seg.type"] <- "straight"
+            trip[ss$t0:ss$tn, "seg.id"] <- ss$id      
+            
+            straight.info <- rbind( straight.info, ss)
+        }        
+    }
+    seg.straights <<- rbind(seg.straights, straight.info)
+    return(trip)
+}
 getTrip.unclassified <- function (trip) {
     unks <- (1:nrow(trip))[ trip$seg.type == "unknown" ]
     unks.tloc <- data.frame( t0=integer(), tn=integer())
@@ -1070,6 +1117,7 @@ getAccels <- function(driver.id = 2591, plot.trip=TRUE) {
 
 get.fname <- function(dir, driver.id, type) sprintf("%s/driver_%s_%s.RData", dir, driver.id, type)
 
+#deprecated -- using getSegments (different outputs)
 getTripSegments <- function(trip, lookup=TRUE) {
     #active = true to remove 'dead segments'
     driver.id <- trip[1,]$driver
@@ -1166,3 +1214,196 @@ segment.remove.jumps <- function ( trip, trip.seg, a.thresh=50 ) {
     }
     segment.clean.points(trip.seg)
 }
+
+getSegments <- function (trip) {
+    driver.id <- trip[1, "driver" ]
+    trip.id   <- trip[1, "tripnum" ]
+    
+    #find the time points that the segment type changes
+    seg.chg <- c(FALSE, trip[-1, "seg.type"] != trip[-nrow(trip), "seg.type"])
+    seg.t0 <- c(1, which(seg.chg))
+    seg.t0
+    
+    segs <- data.frame()
+    i.unk <- i.jump <- i.turn <- i.stop <- i.point <- 0
+    for (i.seg in 1:length(seg.t0)) {
+        t0 <- seg.t0[i.seg]
+        tn <- ifelse( i.seg < length(seg.t0), seg.t0[i.seg+1] - 1, nrow(trip))
+        seg.type <- trip[t0, "seg.type"]
+        seg.id <- trip[t0, "seg.id"]
+        #segs <- rbind(segs, getSegment( trip, t0, tn))
+        
+        if (seg.type == "unknown") {
+            if (t0 == tn) {
+                seg.type <- "point"
+                i.point <- i.point + 1
+                s.cum <- s.crow <- sum( trip[t0, "v" ])
+                phi <- trip[t0, "bearing" ]
+                v0  <- vn <- v.avg <- trip[ t0, "v"] 
+                
+                segs <- rbind(segs, data.frame(iseg=i.seg, seg.type, id=i.point
+                                               , t0, tn, s.cum, s.crow, phi, v0, vn, v.avg
+                                               , driver=driver.id, tripnum=trip.id))
+            } else {
+                i.unk <- i.unk + 1
+                s.cum <- sum( trip[t0:tn, "v" ])
+                xy.d <- trip[tn, 1:2] - trip[t0, 1:2]      
+                names(xy.d) <- c("x.d", "y.d")
+                s.crow <- sqrt( sum( xy.d ^ 2 ))
+                phi <- calcBearing( t=xy.d ) %% 360
+                v0  <- trip[ t0, "v"] 
+                vn  <- trip[ tn, "v"] 
+                v.avg = s.cum / (tn - t0)
+                
+                segs <- rbind(segs, data.frame(iseg=i.seg, seg.type, id=i.unk
+                                               , t0, tn, s.cum, s.crow, phi, v0, vn, v.avg
+                                               , driver=driver.id, tripnum=trip.id))
+            }
+        } else {
+            if ( seg.type == "jump") { 
+                seg.info <- with(seg.jumps, seg.jumps[driver==driver.id & tripnum==trip.id & id==seg.id, ])
+            }
+            if ( seg.type == "stop") { 
+                seg.info <- with(seg.stops, seg.stops[driver==driver.id & tripnum==trip.id & id==seg.id, ])
+            }
+            if ( seg.type == "turn") { 
+                seg.info <- with(seg.turns, seg.turns[driver==driver.id & tripnum==trip.id & id==seg.id, ])
+            }
+            if ( seg.type == "straight") { 
+                seg.info <- with(seg.straights, seg.straights[driver==driver.id & tripnum==trip.id & id==seg.id, ])
+            }
+            if (nrow(seg.info) > 1) seg.info <- seg.info[1,]  #kludge
+            segs <- rbind(segs, cbind( iseg=i.seg, seg.type, seg.info))
+        }
+    }
+    return(segs)
+}
+
+quad14 <- function (phi) {
+    #normalize angle phi such that -180 <=phi <= 180
+    phi <- sign(phi) * ( abs(phi) %% 360 )
+    phi <- ifelse( abs(phi) <=  180, phi, phi - (sign(phi) * 360))
+    return(phi)
+}
+MIN.LENGTH = 10
+getNgrams <- function ( segs, N=3 ) {
+    # N is ignored (assume=3)
+    driver.id <- segs[1, "driver"]
+    trip.id <- segs[1, "tripnum"]
+    trip <- getTrip(driver.id, trip.id, v.thresh=2)
+    
+    ngrams <- data.frame()
+    segs <- segs[segs$s.cum > MIN.LENGTH,  ]
+    for (i in 1:(nrow(segs) - 2)) { 
+        ng <- data.frame( id=i, t0=segs$t0[i], tn=segs$tn[i+2])
+        ng <- cbind( ng, AL = round(sum( segs$s.cum [i:(i+2)])))
+        xy.d <- trip[ng$tn, 1:2] - trip[ng$t0, 1:2]      
+        names(xy.d) <- c("x.d", "y.d")
+        ng <- cbind( ng, CL = round(sqrt( sum( xy.d ^ 2 ))))
+        ng <- cbind( ng, d.phi = round( quad14(segs$phi[i+2] - segs$phi[i] )))
+        ng <- cbind( ng, type1= segs$seg.type[i  ], AL1= round(segs$s.cum[i  ]), CL1= round(segs$s.crow[i  ]))
+        ng <- cbind( ng, type2= segs$seg.type[i+1], AL2= round(segs$s.cum[i+1]), CL2= round(segs$s.crow[i+1]))
+        ng <- cbind( ng, type3= segs$seg.type[i+2], AL3= round(segs$s.cum[i+2]), CL3= round(segs$s.crow[i+2]))
+        ng <- cbind( ng, d.phi12 = round( quad14(segs$phi[i+1] - segs$phi[i  ] )))
+        ng <- cbind( ng, d.phi23 = round( quad14(segs$phi[i+2] - segs$phi[i+1] )))
+        ng <- cbind( ng, tl1=segs$tn[i]-segs$t0[i]+1, tl2=segs$tn[i+1]-segs$t0[i+1]+1, tl3=segs$tn[i+2]-segs$t0[i+2]+1)
+        ng <- cbind( ng, tl = with(ng, tl1+tl2+tl3 ) )
+        
+        ng <- cbind( ng, driver=driver.id, tripnum=trip.id)
+        
+        ngrams <- rbind(ngrams, ng)
+    }
+    return (ngrams)
+}
+
+#EDA tool
+compareNgrams <- function( driver.id, tnum1, seg1, tnum2, seg2, driver2.id=driver.id, sf=function(x) x, show.plot=TRUE) {
+    #sf is a scaling function  -- ignored if not defined
+#    par.orig <- par(mfrow=c(2,1))
+        
+    diffs <- with(driver.ngrams, {
+        trip1.seg <- driver.ngrams[driver==driver.id  & tripnum==tnum1 & id==seg1, ]
+        trip2.seg <- driver.ngrams[driver==driver.id  & tripnum==tnum2 & id==seg2, ]
+                
+        trip1 <- getTrip(driver.id,  tnum1,  v.thresh=2)
+        trip2 <- getTrip(driver2.id, tnum2, v.thresh=2)
+       
+        if (show.plot) {
+            plotTrip(trip1, tmin=trip1.seg$t0-10, tmax=trip1.seg$tn+10 ,t.mark=10, header=FALSE )
+            plotTripOverlay(trip1, data.frame(t0=trip1.seg$t0, tn=trip1.seg$tn))    
+            with(trip1.seg, mtext( sprintf( "seg.id=%d AL=%d CL=%d d.phi=%d tl=%d", id, AL, CL, d.phi, tl)) )
+            
+            plotTrip(trip2, tmin=trip2.seg$t0-10, tmax=trip2.seg$tn+10 ,t.mark=10, header=FALSE )
+            plotTripOverlay(trip2, data.frame(t0=trip2.seg$t0, tn=trip2.seg$tn))    
+            with(trip2.seg, mtext( sprintf( "seg.id=%d AL=%d CL=%d d.phi=%d tl=%d", id, AL, CL, d.phi, tl)) )
+        }
+        features <- c("AL", "CL", "d.phi", "tl")
+        f1 <- sf( trip1.seg[ ,features])
+        f2 <- sf( trip2.seg[, features])
+        nf <- length(features)
+        diffs <- matrix( rep(0,nf), ncol=nf)
+        for (i in 1:length(features) ) { diffs[1,i] <- f1[ ,features[i]] - f2[, features[i]] }
+        colnames(diffs) <- features
+        diffs <- as.data.frame(diffs)
+
+        diffs
+    })  
+    
+    dist <- with(diffs, sqrt( AL^2 + tl^2 + d.phi^2 ))
+    dist
+}
+
+if (! exists("scale.memory")) scale.memory <- data.frame( shift=numeric(), scale=numeric() )
+scaleFeatures <- function(x, name) {  
+    #x is a vectory to be scaled
+    #is the name for the feature (used as rowname for lookup)
+    scale <- 10/sd(x)
+    shift <- mean(x)
+    row <- data.frame( shift, scale, row.names=name)
+    replace <- grep( name, rownames(scale.memory)) 
+    if (length(replace) > 0)  {
+        scale.memory[replace, ] <- row
+    } else {
+        scale.memory <<- rbind( scale.memory, row)
+    }
+    
+    ((x - shift) * scale )
+}
+scaleFeatures2 <- function(x) {  
+    #x is a data frame to be scaled, column names must exist in scale.memory as rows
+    for (col in colnames(x)) {
+        if (col %in% rownames(scale.memory)) {
+            sf <- scale.memory[ col, ]
+            x[, col] <- (x[, col] - sf$shift ) * sf$scale 
+        } else {
+            warning( sprintf("column %s does not exist or is duplicated in scale.memory ... no scaling performed", col))
+        }
+    }
+    x
+}
+
+# http://stackoverflow.com/questions/11944767/draw-an-ellipse-based-on-its-foci
+ellipse <- function(xf1, yf1, xf2, yf2, kf=1.1, new=TRUE,...){
+    # xf1 and yf1 are the coordinates of your focus F1
+    # xf2 and yf2 are the coordinates of your focus F2
+    # k is your constant (sum of distances to F1 and F2 of any points on the ellipse)
+    # new is a logical saying if the function needs to create a new plot or add an ellipse to an existing plot.
+    # ... is any arguments you can pass to functions plot or lines (col, lwd, lty, etc.)
+    dist <- sqrt( (xf1-xf2)^2 + (yf1-yf2)^2)
+    k = dist + kf
+    
+    t <- seq(0, 2*pi, by=pi/100)  # Change the by parameters to change resolution
+    k/2 -> a  # Major axis
+    xc <- (xf1+xf2)/2
+    yc <- (yf1+yf2)/2  # Coordinates of the center
+    dc <- sqrt((xf1-xf2)^2 + (yf1-yf2)^2)/2  # Distance of the foci to the center
+    b <- sqrt(a^2 - dc^2)  # Minor axis #orig
+    b <- kf /2
+    phi <- atan(abs(yf1-yf2)/abs(xf1-xf2))  # Angle between the major axis and the x-axis
+    phi
+    xt <- xc + a*cos(t)*cos(phi) - b*sin(t)*sin(phi)
+    yt <- yc + a*cos(t)*sin(phi) + b*sin(t)*cos(phi)
+    if(new){ plot(xt,yt,type="l",...) }
+    if(!new){ lines(xt,yt,...) }
+}
+
